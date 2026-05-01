@@ -1,0 +1,40 @@
+{
+  "name": "FARO — Tu Asesor Financiero",
+  "short_name": "FARO",
+  "description": "Co-piloto financiero personal para Latinoamérica",
+  "start_url": "./FARO-v2.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F9FA",
+  "theme_color": "#111111",
+  "lang": "es",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Panel Principal",
+      "url": "./FARO-v2.html#panel",
+      "description": "Ver tu resumen financiero"
+    },
+    {
+      "name": "Asesor IA",
+      "url": "./FARO-v2.html#asesor",
+      "description": "Consultar al asesor de IA"
+    }
+  ]
+}

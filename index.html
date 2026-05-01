@@ -1,0 +1,1917 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FARO — Tu Asesor Financiero Personal</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#111111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="FARO">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:#F8F9FA;color:#111111;overflow-x:hidden;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#CCCCCC;border-radius:2px;}
+input,select,textarea{
+  background:#FFFFFF;border:1px solid #DDDDDD;color:#111111;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;
+  padding:10px 14px;border-radius:8px;width:100%;outline:none;transition:border-color 0.2s;
+}
+input:focus,select:focus,textarea:focus{border-color:#111111;}
+input::placeholder,textarea::placeholder{color:#AAAAAA;}
+select option{background:#FFFFFF;color:#111111;}
+button{cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all 0.15s;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- ====================== FIREBASE SDK v10.14.1 ====================== -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import {
+    getAuth,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    onAuthStateChanged,
+    signOut
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc,
+    collection,
+    addDoc,
+    getDocs,
+    deleteDoc,
+    onSnapshot,
+    query,
+    orderBy
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCOuU3uCX-M-MBt5OpP6UcUxjoc4tgSW6s",
+    authDomain: "faro-e4410.firebaseapp.com",
+    projectId: "faro-e4410",
+    storageBucket: "faro-e4410.firebasestorage.app",
+    messagingSenderId: "662713689980",
+    appId: "1:662713689980:web:b190fbb5cb70c4973026f9"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
+  console.log("✅ Firebase 10.14.1 inicializado");
+
+  window.auth = auth;
+  window.db = db;
+  window.currentUser = null;
+  window.onAuthStateChanged = onAuthStateChanged;
+
+  // AUTH
+  window.registrarUsuario = async (email, password, nombre = "") => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    await setDoc(doc(db, "usuarios", userCredential.user.uid), {
+      email,
+      nombre: nombre || email.split('@')[0],
+      creado: new Date().toISOString(),
+      perfilCompletado: false
+    });
+    return userCredential.user;
+  };
+
+  window.iniciarSesion = async (email, password) => {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return userCredential.user;
+  };
+
+  window.cerrarSesion = () => signOut(auth);
+
+  // PERFIL
+  window.guardarPerfil = async (uid, perfil) => {
+    await setDoc(doc(db, "usuarios", uid), { perfil, perfilCompletado: true }, { merge: true });
+  };
+
+  window.cargarPerfil = async (uid) => {
+    const snap = await getDoc(doc(db, "usuarios", uid));
+    return snap.exists() ? snap.data() : null;
+  };
+
+  // TRANSACCIONES
+  window.guardarTransaccion = async (uid, txn) => {
+    const ref = await addDoc(collection(db, "usuarios", uid, "transacciones"), {
+      ...txn,
+      creadoEn: new Date().toISOString()
+    });
+    return ref.id;
+  };
+
+  window.eliminarTransaccion = async (uid, txnId) => {
+    await deleteDoc(doc(db, "usuarios", uid, "transacciones", txnId));
+  };
+
+  window.escucharTransacciones = (uid, callback) => {
+    const q = query(collection(db, "usuarios", uid, "transacciones"), orderBy("creadoEn", "desc"));
+    return onSnapshot(q, (snap) => {
+      callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  };
+
+  // METAS
+  window.guardarMeta = async (uid, meta) => {
+    const ref = await addDoc(collection(db, "usuarios", uid, "metas"), meta);
+    return ref.id;
+  };
+
+  window.actualizarMeta = async (uid, metaId, data) => {
+    await setDoc(doc(db, "usuarios", uid, "metas", metaId), data, { merge: true });
+  };
+
+  window.eliminarMeta = async (uid, metaId) => {
+    await deleteDoc(doc(db, "usuarios", uid, "metas", metaId));
+  };
+
+  window.escucharMetas = (uid, callback) => {
+    return onSnapshot(collection(db, "usuarios", uid, "metas"), (snap) => {
+      callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  };
+
+  // PROYECTOS
+  window.guardarProyecto = async (uid, proyecto) => {
+    const ref = await addDoc(collection(db, "usuarios", uid, "proyectos"), proyecto);
+    return ref.id;
+  };
+
+  window.eliminarProyecto = async (uid, proyId) => {
+    await deleteDoc(doc(db, "usuarios", uid, "proyectos", proyId));
+  };
+
+  window.escucharProyectos = (uid, callback) => {
+    return onSnapshot(collection(db, "usuarios", uid, "proyectos"), (snap) => {
+      callback(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+  };
+
+  // LISTENER AUTH
+  onAuthStateChanged(auth, (user) => {
+    window.currentUser = user;
+    if (user) {
+      console.log("👤 Usuario logueado:", user.uid);
+    } else {
+      console.log("No hay usuario logueado");
+    }
+    window.dispatchEvent(new CustomEvent('authChanged', { detail: user }));
+  });
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+/* ═══════════════════════════ COLORES ═══════════════════════════ */
+const C = {
+  bg: '#F8F9FA', surface: '#FFFFFF', card: '#FFFFFF', border: '#E2E8F0',
+  accent: '#111111', accentDim: 'rgba(0,0,0,0.06)', accentBright: '#333333',
+  gold: '#D97706', goldDim: 'rgba(217,119,6,0.1)',
+  text: '#111111', muted: '#6B7280', dim: '#9CA3AF',
+  success: '#059669', danger: '#DC2626', warning: '#D97706', info: '#2563EB',
+  teal: '#0891B2', purple: '#7C3AED',
+};
+
+/* ═══════════════════════════ DATOS FISCALES CHILE ═══════════════════════════ */
+const TRAMOS_CHILE = [
+  { desde: 0, hasta: 13.5, tasa: 0, label: 'Exento' },
+  { desde: 13.5, hasta: 30, tasa: 4, label: '4%' },
+  { desde: 30, hasta: 50, tasa: 8, label: '8%' },
+  { desde: 50, hasta: 70, tasa: 13.5, label: '13.5%' },
+  { desde: 70, hasta: 90, tasa: 23, label: '23%' },
+  { desde: 90, hasta: 120, tasa: 30.4, label: '30.4%' },
+  { desde: 120, hasta: Infinity, tasa: 35, label: '35%' },
+];
+const UTM_MENSUAL = 66362;
+const UF_ACTUAL = 37800;
+
+/* ═══════════════════════════ CONSTANTES ═══════════════════════════ */
+const CATS = {
+  ingreso: ['Sueldo', 'Honorarios/Freelance', 'Negocio', 'Inversiones', 'Bono', 'Arriendo', 'Otros Ingresos'],
+  gasto: ['Vivienda', 'Alimentación', 'Transporte', 'Electricidad', 'Agua', 'Gas', 'Internet', 'Teléfono', 'Salud', 'Entretención', 'Educación', 'Vestuario', 'Suscripciones', 'Deuda/Crédito', 'Seguros', 'Otros'],
+};
+
+const METAS_OPT = [
+  { id: 'emergencia', label: 'Fondo de Emergencia', icon: '🛡️', color: '#22D77A' },
+  { id: 'casa', label: 'Casa Propia', icon: '🏠', color: '#38BDF8' },
+  { id: 'retiro', label: 'Retiro', icon: '🌴', color: '#F0B429' },
+  { id: 'auto', label: 'Automóvil', icon: '🚗', color: '#A78BFA' },
+  { id: 'deudas', label: 'Pago de Deudas', icon: '✈️', color: '#F472B6' },
+  { id: 'educacion', label: 'Educación', icon: '🎓', color: '#22D77A' },
+  { id: 'negocio', label: 'Emprender', icon: '🚀', color: '#FB923C' },
+  { id: 'inversion', label: 'Portafolio Inversión', icon: '📈', color: '#38BDF8' },
+];
+
+const PROYECTOS_TIPOS = [
+  { id: 'casa', label: 'Casa Propia', icon: '🏠', color: '#38BDF8' },
+  { id: 'auto', label: 'Automóvil', icon: '🚗', color: '#A78BFA' },
+  { id: 'negocio', label: 'Negocio Propio', icon: '🚀', color: '#FB923C' },
+  { id: 'educacion', label: 'Educación / Posgrado', icon: '🎓', color: '#22D77A' },
+  { id: 'remodelacion', label: 'Remodelación', icon: '🔨', color: '#F0B429' },
+  { id: 'viaje', label: 'Viaje Especial', icon: '✈️', color: '#F472B6' },
+  { id: 'retiro', label: 'Retiro Anticipado', icon: '🌴', color: '#00C896' },
+];
+
+const ESTRUCTURA_RECOMENDADA = {
+  formal: {
+    label: 'Asalariado', items: [
+      { cat: 'Vivienda (arriendo/dividendo)', pct: 30, icon: '🏠', color: '#38BDF8' },
+      { cat: 'Alimentación y hogar', pct: 15, icon: '🛒', color: '#22D77A' },
+      { cat: 'Transporte', pct: 10, icon: '🚗', color: '#A78BFA' },
+      { cat: 'Ahorro / Inversión', pct: 20, icon: '💰', color: '#F0B429' },
+      { cat: 'Servicios básicos', pct: 10, icon: '⚡', color: '#FB923C' },
+      { cat: 'Personal / Entretención', pct: 15, icon: '🎉', color: '#F472B6' },
+    ]
+  },
+  entrepreneur: {
+    label: 'Emprendedor', items: [
+      { cat: 'Vivienda', pct: 25, icon: '🏠', color: '#38BDF8' },
+      { cat: 'Alimentación y hogar', pct: 15, icon: '🛒', color: '#22D77A' },
+      { cat: 'Transporte', pct: 10, icon: '🚗', color: '#A78BFA' },
+      { cat: 'Ahorro / Fondo emergencia', pct: 25, icon: '💰', color: '#F0B429' },
+      { cat: 'Servicios básicos', pct: 10, icon: '⚡', color: '#FB923C' },
+      { cat: 'Reinversión negocio', pct: 15, icon: '🚀', color: '#00C896' },
+    ]
+  },
+  freelance: {
+    label: 'Freelancer', items: [
+      { cat: 'Vivienda', pct: 28, icon: '🏠', color: '#38BDF8' },
+      { cat: 'Alimentación', pct: 15, icon: '🛒', color: '#22D77A' },
+      { cat: 'Transporte', pct: 8, icon: '🚗', color: '#A78BFA' },
+      { cat: 'Ahorro / Previsión', pct: 22, icon: '💰', color: '#F0B429' },
+      { cat: 'Servicios básicos', pct: 10, icon: '⚡', color: '#FB923C' },
+      { cat: 'Personal / Marketing', pct: 17, icon: '🎉', color: '#F472B6' },
+    ]
+  },
+};
+
+const INTEGRACIONES = [
+  { id: 'fintoc', nombre: 'Fintoc', desc: 'Sincronización bancaria Chile', region: '🇨🇱 Chile', icon: '🏦', bancos: ['BancoEstado', 'Banco de Chile', 'Santander Chile', 'BCI', 'Scotiabank Chile', 'Banco BICE', 'Banco Itaú Chile'] },
+  { id: 'belvo', nombre: 'Belvo', desc: 'Open banking LatAm', region: '🌎 LatAm', icon: '🔗', bancos: ['Bancolombia', 'BBVA Colombia', 'Itaú Brasil', 'Bradesco', 'Banco de Bogotá', 'Banorte México'] },
+  { id: 'plaid', nombre: 'Plaid', desc: 'EE.UU. y conexiones globales', region: '🌐 Global', icon: '🌐', bancos: ['Chase', 'Bank of America', 'Wells Fargo', 'Citibank'] },
+  { id: 'fintual', nombre: 'Fintual', desc: 'Portafolio de inversiones', region: '🇨🇱 Chile', icon: '📊', bancos: [] },
+  { id: 'buda', nombre: 'Buda.com', desc: 'Criptomonedas', region: '🌎 LatAm', icon: '₿', bancos: [] },
+  { id: 'mercadopago', nombre: 'MercadoPago', desc: 'Pagos y billetera digital', region: '🌎 LatAm', icon: '💳', bancos: [] },
+];
+
+/* ═══════════════════════════ UTILIDADES ═══════════════════════════ */
+const fmt = (n, cur = 'USD') => {
+  if (n === undefined || n === null || n === '') return '—';
+  const num = Number(n);
+  if (cur === 'CLP') return `$${Math.round(num).toLocaleString('es-CL')}`;
+  if (cur === 'COP' || cur === 'ARS') return `$${Math.round(num).toLocaleString('es-CO')}`;
+  if (cur === 'MXN') return `$${num.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return `$${Math.abs(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+function calcPuntaje(p, txns) {
+  const ingreso = +p.ingreso || 0; if (!ingreso) return 0;
+  const now = new Date();
+  const gastosMes = txns.filter(t => t.tipo === 'gasto' && new Date(t.fecha).getMonth() === now.getMonth()).reduce((s, t) => s + (+t.monto || 0), 0);
+  const tasaAhorro = (ingreso - gastosMes) / ingreso;
+  const ahorro = +p.ahorro || 0, deuda = +p.deuda || 0;
+  let s = 50;
+  if (tasaAhorro >= 0.2) s += 20; else if (tasaAhorro >= 0.1) s += 10; else if (tasaAhorro < 0) s -= 20;
+  if (ahorro >= ingreso * 6) s += 15; else if (ahorro >= ingreso * 3) s += 8; else if (ahorro < ingreso) s -= 10;
+  const dti = deuda / (ingreso * 12 || 1);
+  if (dti === 0) s += 15; else if (dti < 0.3) s += 8; else if (dti > 1) s -= 15;
+  if ((p.metas || []).length > 0) s += 10;
+  return Math.min(100, Math.max(0, Math.round(s)));
+}
+
+const nivelInfo = s => s >= 86 ? ['Excelente', '#22D77A'] : s >= 71 ? ['Bueno', '#F0B429'] : s >= 51 ? ['Estable', '#00C896'] : s >= 31 ? ['En Riesgo', '#FB923C'] : ['Crítico', '#FF6B6B'];
+
+function calcImpuestoChile(ingresoAnual, moneda = 'CLP') {
+  let ingCLP = ingresoAnual;
+  if (moneda === 'USD') ingCLP = ingresoAnual * 900;
+  const ingUTM = ingCLP / (UTM_MENSUAL * 12);
+  let impuesto = 0, tramo = 'Exento';
+  for (const t of TRAMOS_CHILE) {
+    if (ingUTM > t.desde) {
+      const base = Math.min(ingUTM, t.hasta === Infinity ? ingUTM : t.hasta) - t.desde;
+      impuesto += base * (UTM_MENSUAL * 12) * (t.tasa / 100);
+      if (ingUTM <= t.hasta) { tramo = t.label; break; }
+      tramo = t.label;
+    }
+  }
+  return { impuesto: Math.round(impuesto), tramo, ingCLP, ingUTM: ingUTM.toFixed(2) };
+}
+
+/* ═══════════════════════════ PRIMITIVOS ═══════════════════════════ */
+const Btn = ({ children, onClick, variant = 'primary', disabled, full, small, style = {} }) => {
+  const base = {
+    padding: small ? '7px 16px' : '10px 22px', borderRadius: '8px', fontSize: small ? '12px' : '14px',
+    fontWeight: 500, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+    width: full ? '100%' : 'auto', border: 'none', ...style
+  };
+  const vs = {
+    primary: { background: C.accent, color: '#FFFFFF' },
+    secondary: { background: C.gold, color: '#030D07' },
+    outline: { background: 'transparent', border: `1px solid ${C.border}`, color: C.text },
+    ghost: { background: 'transparent', color: C.muted },
+    success: { background: 'rgba(34,215,122,0.12)', border: '1px solid rgba(34,215,122,0.3)', color: C.success },
+    danger: { background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.25)', color: C.danger },
+  };
+  return <button style={{ ...base, ...vs[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
+};
+
+const Tarjeta = ({ children, style = {}, onClick }) => (
+  <div onClick={onClick} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px', ...style }}>
+    {children}
+  </div>
+);
+
+const Etiqueta = ({ children }) => <div style={{ fontSize: '12px', color: C.muted, marginBottom: '5px' }}>{children}</div>;
+
+const Badge = ({ children, color = C.accent }) => (
+  <span style={{ fontSize: '11px', padding: '3px 10px', borderRadius: '12px', background: `${color}18`, border: `1px solid ${color}30`, color: color, fontWeight: 500 }}>{children}</span>
+);
+
+/* ═══════════════════════════ PANTALLA AUTH ═══════════════════════════ */
+function PantallaAuth({ onSuccess }) {
+  const [modo, setModo] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [nombre, setNombre] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const mensajesError = {
+    'auth/email-already-in-use': 'Este correo ya está registrado.',
+    'auth/wrong-password': 'Contraseña incorrecta.',
+    'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+    'auth/user-not-found': 'No existe una cuenta con ese correo.',
+    'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+    'auth/invalid-email': 'Correo electrónico inválido.',
+    'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos.',
+  };
+
+  const manejar = async () => {
+    if (!email.trim() || !password.trim()) return;
+    setCargando(true); setError('');
+    try {
+      if (modo === 'registro') {
+        await window.registrarUsuario(email.trim(), password, nombre.trim());
+      } else {
+        await window.iniciarSesion(email.trim(), password);
+      }
+      onSuccess();
+    } catch (err) {
+      setError(mensajesError[err.code] || err.message);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <div style={{ position: 'fixed', top: '-100px', right: '-100px', width: '400px', height: '400px', background: `radial-gradient(circle,${C.accentDim} 0%,transparent 70%)`, pointerEvents: 'none' }} />
+      <Tarjeta style={{ width: '420px', maxWidth: '100%', padding: '40px 32px', position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '42px', fontWeight: 700, color: C.accent, letterSpacing: '-2px' }}>FARO</div>
+          <div style={{ fontSize: '11px', color: C.muted, letterSpacing: '4px', textTransform: 'uppercase', marginTop: '3px' }}>Co-Piloto Financiero</div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+          {[['login', 'Iniciar sesión'], ['registro', 'Crear cuenta']].map(([m, l]) => (
+            <button key={m} onClick={() => { setModo(m); setError(''); }}
+              style={{
+                flex: 1, padding: '10px', borderRadius: '8px', border: `1px solid ${modo === m ? C.accent : C.border}`,
+                background: modo === m ? C.accentDim : 'transparent', color: modo === m ? C.accent : C.muted,
+                fontWeight: 500, fontSize: '13px', cursor: 'pointer', transition: 'all 0.15s'
+              }}>{l}</button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {modo === 'registro' && (
+            <div>
+              <Etiqueta>Nombre</Etiqueta>
+              <input
+                placeholder="Ana García"
+                value={nombre}
+                onChange={e => setNombre(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && manejar()}
+              />
+            </div>
+          )}
+          <div>
+            <Etiqueta>Correo electrónico</Etiqueta>
+            <input
+              type="email"
+              placeholder="ana@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && manejar()}
+              autoComplete="email"
+            />
+          </div>
+          <div>
+            <Etiqueta>Contraseña {modo === 'registro' && <span style={{ color: C.dim }}>(mínimo 6 caracteres)</span>}</Etiqueta>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && manejar()}
+              autoComplete={modo === 'login' ? 'current-password' : 'new-password'}
+            />
+          </div>
+
+          {error && (
+            <div style={{ padding: '10px 14px', background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.25)', borderRadius: '8px', fontSize: '13px', color: C.danger, lineHeight: '1.5' }}>
+              {error}
+            </div>
+          )}
+
+          <Btn onClick={manejar} disabled={cargando || !email.trim() || !password.trim()} full style={{ marginTop: '4px' }}>
+            {cargando ? 'Procesando...' : modo === 'login' ? 'Entrar a FARO' : 'Crear mi cuenta'}
+          </Btn>
+        </div>
+
+        <div style={{ marginTop: '20px', padding: '12px', background: C.accentDim, borderRadius: '8px', fontSize: '12px', color: C.muted, lineHeight: '1.6', textAlign: 'center' }}>
+          🔒 Tus datos se almacenan de forma segura en Firebase.<br />Solo tú tendrás acceso a tu información.
+        </div>
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ ONBOARDING ═══════════════════════════ */
+function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
+  const up = (f, v) => setP(p => ({ ...p, [f]: v }));
+  const upG = (f, v) => setP(p => ({ ...p, gastos: { ...p.gastos, [f]: v } }));
+  const puedeAvanzar = [!!perfil.nombre.trim(), !!perfil.ingreso && +perfil.ingreso > 0, true, true, true][paso];
+  const pasos = ['Datos personales', 'Tus ingresos', 'Gastos mensuales', 'Tus metas', 'Situación actual'];
+
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+      <div style={{ position: 'fixed', top: '-100px', right: '-100px', width: '400px', height: '400px', background: `radial-gradient(circle,${C.accentDim} 0%,transparent 70%)`, pointerEvents: 'none' }} />
+      <div style={{ width: '100%', maxWidth: '540px', position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '42px', fontWeight: 700, color: C.accent, letterSpacing: '-2px' }}>FARO</div>
+          <div style={{ fontSize: '11px', color: C.muted, letterSpacing: '4px', textTransform: 'uppercase', marginTop: '3px' }}>Co-Piloto Financiero</div>
+        </div>
+        <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
+          {pasos.map((_, i) => <div key={i} style={{ flex: 1, height: '3px', borderRadius: '2px', background: i <= paso ? C.accent : C.border, transition: 'background 0.4s' }} />)}
+        </div>
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '28px' }}>Paso {paso + 1} de {pasos.length} — {pasos[paso]}</div>
+
+        <Tarjeta style={{ padding: '32px' }}>
+          {paso === 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Bienvenido a FARO</div>
+              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '12px', lineHeight: '1.7' }}>Construyamos tu perfil financiero para darte asesoría realmente personalizada — no consejos genéricos.</div>
+              <div><Etiqueta>Nombre completo *</Etiqueta><input placeholder="Ana García" value={perfil.nombre} onChange={e => up('nombre', e.target.value)} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div><Etiqueta>Edad</Etiqueta><input type="number" placeholder="30" value={perfil.edad || ''} onChange={e => up('edad', e.target.value)} min="18" /></div>
+                <div><Etiqueta>País</Etiqueta>
+                  <select value={perfil.pais} onChange={e => up('pais', e.target.value)}>
+                    {['Chile', 'Colombia', 'México', 'Perú', 'Argentina', 'Brasil', 'España', 'Otro'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div><Etiqueta>Tipo de empleo</Etiqueta>
+                  <select value={perfil.empleo} onChange={e => up('empleo', e.target.value)}>
+                    <option value="formal">Asalariado formal</option>
+                    <option value="entrepreneur">Emprendedor / Dueño de negocio</option>
+                    <option value="freelance">Freelancer / Independiente</option>
+                    <option value="retired">Jubilado / Pensionado</option>
+                  </select>
+                </div>
+                <div><Etiqueta>Hijos / Dependientes</Etiqueta><input type="number" placeholder="0" min="0" value={perfil.hijos || ''} onChange={e => up('hijos', e.target.value)} /></div>
+              </div>
+              <div><Etiqueta>Estado civil</Etiqueta>
+                <select value={perfil.estadoCivil || 'soltero'} onChange={e => up('estadoCivil', e.target.value)}>
+                  <option value="soltero">Soltero/a</option><option value="casado">Casado/a o en pareja</option><option value="divorciado">Divorciado/a</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {paso === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Tus Ingresos</div>
+              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '12px' }}>Ingresa tu sueldo líquido (después de impuestos y descuentos).</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+                <div><Etiqueta>Ingreso mensual líquido *</Etiqueta><input type="number" placeholder="1500" value={perfil.ingreso} onChange={e => up('ingreso', e.target.value)} /></div>
+                <div><Etiqueta>Moneda</Etiqueta>
+                  <select value={perfil.moneda} onChange={e => up('moneda', e.target.value)}>
+                    {['CLP', 'USD', 'COP', 'MXN', 'PEN', 'ARS', 'EUR', 'BRL'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><Etiqueta>Ingresos adicionales / variables</Etiqueta>
+                <input type="number" placeholder="0" value={perfil.ingresoAdicional || ''} onChange={e => up('ingresoAdicional', e.target.value)} />
+              </div>
+              <div><Etiqueta>Frecuencia de pago</Etiqueta>
+                <select value={perfil.frecuencia || 'mensual'} onChange={e => up('frecuencia', e.target.value)}>
+                  <option value="mensual">Mensual</option><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option><option value="irregular">Irregular</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {paso === 2 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Gastos Mensuales Fijos</div>
+              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '10px' }}>Todo en {perfil.moneda || 'USD'}. Deja en 0 lo que no aplique.</div>
+              {[['arriendo', '🏠 Arriendo / Dividendo'], ['alimentacion', '🛒 Alimentación y hogar'], ['transporte', '🚗 Transporte'],
+              ['electricidad', '⚡ Electricidad'], ['agua', '💧 Agua'], ['gas', '🔥 Gas / Calefacción'],
+              ['internet', '📡 Internet'], ['telefono', '📱 Teléfono / Celular'],
+              ['seguro', '🛡️ Seguros'], ['otros', '📋 Otros gastos fijos']].map(([k, l]) => (
+                <div key={k} style={{ display: 'grid', gridTemplateColumns: '1fr 150px', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ fontSize: '13px', color: C.muted }}>{l}</div>
+                  <input type="number" placeholder="0" value={perfil.gastos?.[k] || ''} onChange={e => upG(k, e.target.value)} style={{ textAlign: 'right' }} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {paso === 3 && (
+            <div>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '6px' }}>Tus Metas Financieras</div>
+              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '20px' }}>Selecciona las que apliquen. Puedes ajustarlas después.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {METAS_OPT.map(g => {
+                  const sel = (perfil.metas || []).includes(g.id);
+                  return (
+                    <div key={g.id} onClick={() => {
+                      const gs = perfil.metas || [];
+                      up('metas', sel ? gs.filter(x => x !== g.id) : [...gs, g.id]);
+                    }} style={{
+                      padding: '13px', borderRadius: '10px', cursor: 'pointer',
+                      border: `1px solid ${sel ? g.color : C.border}`, background: sel ? `${g.color}15` : C.surface,
+                      display: 'flex', alignItems: 'center', gap: '10px', transition: 'all 0.2s'
+                    }}>
+                      <span style={{ fontSize: '20px' }}>{g.icon}</span>
+                      <span style={{ fontSize: '13px', fontWeight: sel ? 500 : 400, color: sel ? g.color : C.text }}>{g.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {paso === 4 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Situación Actual</div>
+              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '8px' }}>Último paso — esto calibra tu asesoría.</div>
+              <div><Etiqueta>Ahorro / Fondo de emergencia actual ({perfil.moneda || 'USD'})</Etiqueta>
+                <input type="number" placeholder="0" value={perfil.ahorro || ''} onChange={e => up('ahorro', e.target.value)} />
+              </div>
+              <div><Etiqueta>Deuda total ({perfil.moneda || 'USD'})</Etiqueta>
+                <input type="number" placeholder="0" value={perfil.deuda || ''} onChange={e => up('deuda', e.target.value)} />
+              </div>
+              <div>
+                <Etiqueta>Tolerancia al riesgo: <span style={{ color: C.accent, fontWeight: 600 }}>{perfil.toleranciaRiesgo}/10</span> — {perfil.toleranciaRiesgo <= 3 ? 'Conservador' : perfil.toleranciaRiesgo <= 6 ? 'Moderado' : 'Agresivo'}</Etiqueta>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                    <div key={n} onClick={() => up('toleranciaRiesgo', n)} style={{
+                      width: '36px', height: '36px', borderRadius: '8px', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 500,
+                      background: n <= perfil.toleranciaRiesgo ? C.accent : C.surface,
+                      color: n <= perfil.toleranciaRiesgo ? '#FFFFFF' : C.muted,
+                      border: `1px solid ${n <= perfil.toleranciaRiesgo ? C.accent : C.border}`
+                    }}>{n}</div>
+                  ))}
+                </div>
+              </div>
+              <div><Etiqueta>API Key Anthropic — habilita el Asesor IA</Etiqueta>
+                <input type="password" placeholder="sk-ant-api03-..." value={perfil.apiKey || ''} onChange={e => up('apiKey', e.target.value)} />
+                <div style={{ fontSize: '11px', color: C.dim, marginTop: '5px', lineHeight: '1.6' }}>Tu clave se almacena solo en tu navegador. Obtén una en console.anthropic.com. Puedes agregarla después.</div>
+              </div>
+              <div style={{ padding: '13px', background: C.accentDim, border: `1px solid ${C.accent}25`, borderRadius: '10px', fontSize: '12px', color: C.muted, lineHeight: '1.6' }}>
+                🔒 Tus datos financieros se guardan en Firebase bajo tu cuenta. Solo tú tienes acceso.
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '28px' }}>
+            {paso > 0 ? <Btn variant="outline" onClick={() => setPaso(s => s - 1)}>← Atrás</Btn> : <div />}
+            <Btn onClick={paso < 4 ? () => setPaso(s => s + 1) : onCompleto} disabled={!puedeAvanzar}>
+              {paso < 4 ? 'Continuar →' : 'Lanzar FARO 🚀'}
+            </Btn>
+          </div>
+        </Tarjeta>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ BARRA LATERAL ═══════════════════════════ */
+function BarraLateral({ activo, setActivo, perfil, puntaje, onCerrarSesion }) {
+  const [nl, nc] = nivelInfo(puntaje);
+  const nav = [
+    { id: 'panel', icon: '◉', label: 'Panel Principal' },
+    { id: 'transacciones', icon: '↕', label: 'Transacciones' },
+    { id: 'asesor', icon: '✦', label: 'Asesor IA' },
+    { id: 'metas', icon: '◎', label: 'Mis Metas' },
+    { id: 'proyectos', icon: '◈', label: 'Proyectos' },
+    { id: 'financiamiento', icon: '◇', label: '¿Cómo Financiarme?' },
+    { id: 'impuestos', icon: '📋', label: 'Mis Impuestos' },
+    { id: 'integraciones', icon: '⟁', label: 'Integraciones' },
+    { id: 'configuracion', icon: '○', label: 'Configuración' },
+  ];
+  return (
+    <div style={{ width: '228px', minHeight: '100vh', background: C.surface, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', flexShrink: 0, position: 'sticky', top: 0, height: '100vh', overflowY: 'auto' }}>
+      <div style={{ padding: '24px 20px 18px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 700, color: C.accent, letterSpacing: '-1px' }}>FARO</div>
+        <div style={{ fontSize: '9px', color: C.muted, letterSpacing: '3px', textTransform: 'uppercase', marginTop: '1px' }}>Co-Piloto Financiero</div>
+      </div>
+      <nav style={{ flex: 1, padding: '10px 0' }}>
+        {nav.map(({ id, icon, label }) => (
+          <div key={id} onClick={() => setActivo(id)} style={{
+            display: 'flex', alignItems: 'center', gap: '11px', padding: '10px 20px', cursor: 'pointer', fontSize: '13px',
+            background: activo === id ? C.accentDim : 'transparent',
+            borderRight: `2px solid ${activo === id ? C.accent : 'transparent'}`,
+            color: activo === id ? C.accent : C.muted, fontWeight: activo === id ? 500 : 400, transition: 'all 0.15s'
+          }}>
+            <span style={{ fontSize: '14px', width: '16px', textAlign: 'center' }}>{icon}</span>{label}
+          </div>
+        ))}
+      </nav>
+      <div style={{ padding: '14px 20px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: '10px', color: C.muted, marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '1px' }}>Salud Financiera</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', marginBottom: '3px' }}>
+          <span style={{ fontSize: '28px', fontWeight: 700, color: nc, fontFamily: 'Fraunces' }}>{puntaje}</span>
+          <span style={{ fontSize: '12px', color: C.muted }}>/100</span>
+        </div>
+        <div style={{ fontSize: '12px', color: nc, marginBottom: '7px' }}>{nl}</div>
+        <div style={{ height: '4px', background: C.border, borderRadius: '2px', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${puntaje}%`, background: `linear-gradient(90deg,${C.accent},${C.gold})`, borderRadius: '2px', transition: 'width 0.6s' }} />
+        </div>
+      </div>
+      <div style={{ padding: '12px 20px', borderTop: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: '13px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '2px' }}>{perfil.nombre || 'Usuario'}</div>
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px' }}>{perfil.pais} · {perfil.empleo === 'formal' ? 'Asalariado' : perfil.empleo === 'entrepreneur' ? 'Emprendedor' : 'Freelancer'}</div>
+        <button onClick={onCerrarSesion} style={{ fontSize: '12px', color: C.dim, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Cerrar sesión →</button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ PANEL PRINCIPAL ═══════════════════════════ */
+function Panel({ perfil, txns, puntaje, setActivo }) {
+  const now = new Date(), mo = now.getMonth(), yr = now.getFullYear(), cur = perfil.moneda || 'USD';
+  const mTxns = txns.filter(t => new Date(t.fecha).getMonth() === mo && new Date(t.fecha).getFullYear() === yr);
+  const mIngreso = mTxns.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (+t.monto || 0), 0);
+  const mGasto = mTxns.filter(t => t.tipo === 'gasto').reduce((s, t) => s + (+t.monto || 0), 0);
+  const neto = mIngreso - mGasto;
+  const tasaAhorro = mIngreso ? Math.round(((mIngreso - mGasto) / mIngreso) * 100) : 0;
+  const [nl, nc] = nivelInfo(puntaje);
+  const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+  const eKey = perfil.empleo === 'entrepreneur' ? 'entrepreneur' : perfil.empleo === 'freelance' ? 'freelance' : 'formal';
+  const estructura = ESTRUCTURA_RECOMENDADA[eKey];
+
+  const byCat = mTxns.filter(t => t.tipo === 'gasto').reduce((a, t) => { a[t.categoria] = (a[t.categoria] || 0) + (+t.monto || 0); return a; }, {});
+  const topCats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxCat = topCats[0]?.[1] || 1;
+
+  const alertas = [];
+  if (tasaAhorro < 10 && mIngreso > 0) alertas.push({ tipo: 'danger', msg: `Tasa de ahorro del ${tasaAhorro}%. Apunta a mínimo 20% para construir patrimonio.` });
+  if (tasaAhorro >= 20) alertas.push({ tipo: 'success', msg: `¡Excelente! ${tasaAhorro}% de ahorro. Considera invertir el excedente.` });
+  if (+perfil.ahorro < (+perfil.ingreso * 3)) alertas.push({ tipo: 'warning', msg: `Fondo de emergencia menor a 3 meses. Meta: ${fmt((+perfil.ingreso || 0) * 3, cur)}.` });
+  if (alertas.length === 0) alertas.push({ tipo: 'info', msg: `Agrega transacciones para obtener alertas personalizadas.` });
+
+  const cAlert = { success: '#22D77A', danger: '#FF6B6B', warning: '#FFB830', info: '#38BDF8' };
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '980px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '26px' }}>
+        <div style={{ fontFamily: 'Fraunces', fontSize: '28px', fontWeight: 600 }}>
+          {now.getHours() < 12 ? 'Buenos días' : now.getHours() < 17 ? 'Buenas tardes' : 'Buenas noches'}, {perfil.nombre?.split(' ')[0] || ''}
+        </div>
+        <div style={{ color: C.muted, fontSize: '14px', marginTop: '3px' }}>
+          {now.toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginBottom: '20px' }}>
+        {[
+          { l: 'Ingreso Mensual', v: fmt(mIngreso, cur), s: meses[mo], c: C.text },
+          { l: 'Gastos Mensuales', v: fmt(mGasto, cur), s: mGasto > mIngreso ? '⚠️ Déficit' : '✓ Dentro del presupuesto', c: mGasto > mIngreso ? C.danger : C.text },
+          { l: 'Flujo Neto', v: fmt(Math.abs(neto), cur), s: `${neto >= 0 ? '+' : '−'}${tasaAhorro}% tasa de ahorro`, c: neto >= 0 ? C.success : C.danger },
+          { l: 'Salud Financiera', v: `${puntaje}/100`, s: nl, c: nc },
+        ].map(({ l, v, s, c }) => (
+          <Tarjeta key={l}>
+            <div style={{ fontSize: '11px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>{l}</div>
+            <div style={{ fontSize: '22px', fontWeight: 700, color: c, marginBottom: '4px', fontFamily: 'Fraunces' }}>{v}</div>
+            <div style={{ fontSize: '12px', color: C.muted }}>{s}</div>
+          </Tarjeta>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+        <Tarjeta>
+          <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '16px' }}>Principales Gastos — {meses[mo]}</div>
+          {topCats.length === 0 ? (
+            <div style={{ color: C.muted, fontSize: '13px', padding: '20px 0', textAlign: 'center' }}>
+              Sin gastos registrados aún.<br />
+              <span onClick={() => setActivo('transacciones')} style={{ color: C.accent, cursor: 'pointer', fontSize: '12px', marginTop: '6px', display: 'inline-block' }}>Agregar transacciones →</span>
+            </div>
+          ) : topCats.map(([cat, monto]) => (
+            <div key={cat} style={{ marginBottom: '11px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                <span style={{ color: C.muted }}>{cat}</span>
+                <span style={{ fontWeight: 500 }}>{fmt(monto, cur)}</span>
+              </div>
+              <div style={{ height: '5px', background: C.border, borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(monto / maxCat) * 100}%`, background: `linear-gradient(90deg,${C.accent},${C.gold})`, borderRadius: '3px' }} />
+              </div>
+            </div>
+          ))}
+        </Tarjeta>
+
+        <Tarjeta>
+          <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '14px' }}>Alertas y Recomendaciones</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            {alertas.map((a, i) => (
+              <div key={i} style={{ padding: '10px 12px', borderRadius: '8px', fontSize: '13px', lineHeight: '1.5', background: `${cAlert[a.tipo]}10`, border: `1px solid ${cAlert[a.tipo]}30`, color: cAlert[a.tipo] }}>
+                {a.tipo === 'success' ? '✅' : a.tipo === 'danger' ? '⚠️' : a.tipo === 'warning' ? '💡' : 'ℹ️'} {a.msg}
+              </div>
+            ))}
+            <button onClick={() => setActivo('asesor')} style={{ padding: '9px', borderRadius: '8px', border: `1px dashed ${C.border}`, background: 'transparent', color: C.muted, fontSize: '12px', cursor: 'pointer', marginTop: '2px' }}>
+              ✦ Consultar al Asesor IA →
+            </button>
+          </div>
+        </Tarjeta>
+      </div>
+
+      <Tarjeta style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 500 }}>Estructura Recomendada de Gastos</div>
+            <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>Para tu perfil: {estructura.label} — Ingreso: {fmt(+perfil.ingreso || 0, cur)}/mes</div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '10px' }}>
+          {estructura.items.map(item => {
+            const montoRecomendado = Math.round((+perfil.ingreso || 0) * item.pct / 100);
+            return (
+              <div key={item.cat} style={{ padding: '12px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>{item.icon}</span>
+                  <span style={{ fontSize: '11px', color: C.muted, lineHeight: '1.3' }}>{item.cat}</span>
+                </div>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: item.color, fontFamily: 'Fraunces' }}>{item.pct}%</div>
+                <div style={{ fontSize: '12px', color: C.muted, marginTop: '2px' }}>{fmt(montoRecomendado, cur)}/mes</div>
+                <div style={{ height: '3px', background: C.border, borderRadius: '2px', marginTop: '8px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: '100%', background: item.color, borderRadius: '2px', opacity: 0.7 }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Tarjeta>
+
+      <Tarjeta style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: '14px', fontWeight: 500 }}>Transacciones Recientes</div>
+          <button onClick={() => setActivo('transacciones')} style={{ background: 'none', border: 'none', color: C.accent, fontSize: '12px', cursor: 'pointer' }}>Ver todas →</button>
+        </div>
+        {txns.slice(0, 6).length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>Sin transacciones aún.</div>
+        ) : txns.slice(0, 6).map((t, i) => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 20px', borderBottom: i < 5 ? `1px solid ${C.border}` : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', background: t.tipo === 'ingreso' ? 'rgba(34,215,122,0.1)' : 'rgba(255,107,107,0.1)' }}>
+                {t.tipo === 'ingreso' ? '↑' : '↓'}
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 500 }}>{t.desc || t.categoria}</div>
+                <div style={{ fontSize: '12px', color: C.muted }}>{t.categoria} · {t.fecha}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '14px', fontWeight: 600, color: t.tipo === 'ingreso' ? C.success : C.danger }}>
+              {t.tipo === 'ingreso' ? '+' : '−'}{fmt(t.monto, t.moneda || cur)}
+            </div>
+          </div>
+        ))}
+      </Tarjeta>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ TRANSACCIONES ═══════════════════════════ */
+function Transacciones({ txns, setTxns, perfil }) {
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [filtro, setFiltro] = useState('todos');
+  const [form, setForm] = useState({ tipo: 'gasto', monto: '', categoria: '', desc: '', fecha: new Date().toISOString().split('T')[0] });
+  const [guardando, setGuardando] = useState(false);
+  const cur = perfil.moneda || 'USD';
+  const uid = window.currentUser?.uid;
+
+  const agregar = async () => {
+    if (!form.monto || !form.categoria) return;
+    setGuardando(true);
+    const nueva = { ...form, id: Date.now() + '', monto: +form.monto, moneda: cur };
+    try {
+      if (uid && window.guardarTransaccion) {
+        const docId = await window.guardarTransaccion(uid, nueva);
+        nueva.id = docId;
+      }
+      setTxns(p => [nueva, ...p]);
+      setForm({ tipo: 'gasto', monto: '', categoria: '', desc: '', fecha: new Date().toISOString().split('T')[0] });
+      setMostrarForm(false);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const eliminar = async (id) => {
+    if (uid && window.eliminarTransaccion) {
+      try { await window.eliminarTransaccion(uid, id); } catch (e) { console.warn(e); }
+    }
+    setTxns(p => p.filter(x => x.id !== id));
+  };
+
+  const filtradas = txns.filter(t => filtro === 'todos' || t.tipo === filtro);
+  const totIng = txns.filter(t => t.tipo === 'ingreso').reduce((s, t) => s + (+t.monto || 0), 0);
+  const totGas = txns.filter(t => t.tipo === 'gasto').reduce((s, t) => s + (+t.monto || 0), 0);
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '820px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '22px' }}>
+        <div>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Transacciones</div>
+          <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>{txns.length} registros · <span style={{ color: C.success }}>+{fmt(totIng, cur)}</span> · <span style={{ color: C.danger }}>−{fmt(totGas, cur)}</span></div>
+        </div>
+        <Btn onClick={() => setMostrarForm(true)}>+ Agregar</Btn>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
+        {[['todos', 'Todos'], ['ingreso', 'Ingresos'], ['gasto', 'Gastos']].map(([f, l]) => (
+          <button key={f} onClick={() => setFiltro(f)} style={{ padding: '7px 18px', borderRadius: '20px', fontSize: '13px', fontWeight: 500, border: 'none', cursor: 'pointer', background: filtro === f ? C.accent : C.card, color: filtro === f ? '#FFFFFF' : C.muted }}>{l}</button>
+        ))}
+      </div>
+      <Tarjeta style={{ padding: 0, overflow: 'hidden' }}>
+        {filtradas.length === 0 ? (
+          <div style={{ padding: '48px', textAlign: 'center', color: C.muted, fontSize: '13px' }}>Sin transacciones. Haz clic en "+ Agregar" para comenzar.</div>
+        ) : filtradas.map((t, i) => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 20px', borderBottom: i < filtradas.length - 1 ? `1px solid ${C.border}` : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0, background: t.tipo === 'ingreso' ? 'rgba(34,215,122,0.1)' : 'rgba(255,107,107,0.1)' }}>
+                {t.tipo === 'ingreso' ? '↑' : '↓'}
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 500 }}>{t.desc || t.categoria}</div>
+                <div style={{ fontSize: '12px', color: C.muted }}>{t.categoria} · {t.fecha}</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: t.tipo === 'ingreso' ? C.success : C.danger }}>
+                {t.tipo === 'ingreso' ? '+' : '−'}{fmt(t.monto, t.moneda || cur)}
+              </div>
+              <button onClick={() => eliminar(t.id)} style={{ background: 'none', border: 'none', color: C.dim, fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+          </div>
+        ))}
+      </Tarjeta>
+
+      {mostrarForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={e => e.target === e.currentTarget && setMostrarForm(false)}>
+          <Tarjeta style={{ width: '440px', maxWidth: '95vw', padding: '28px' }}>
+            <div style={{ fontFamily: 'Fraunces', fontSize: '20px', fontWeight: 600, marginBottom: '18px' }}>Nueva Transacción</div>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+              {[['gasto', 'Gasto'], ['ingreso', 'Ingreso']].map(([t, l]) => (
+                <button key={t} onClick={() => setForm(f => ({ ...f, tipo: t, categoria: '' }))} style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 500, background: form.tipo === t ? (t === 'ingreso' ? 'rgba(34,215,122,0.15)' : 'rgba(255,107,107,0.15)') : C.surface, color: form.tipo === t ? (t === 'ingreso' ? C.success : C.danger) : C.muted }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              <input type="number" placeholder={`Monto (${cur})`} value={form.monto} onChange={e => setForm(f => ({ ...f, monto: e.target.value }))} />
+              <select value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
+                <option value="">Seleccionar categoría...</option>
+                {CATS[form.tipo].map(c => <option key={c}>{c}</option>)}
+              </select>
+              <input placeholder="Descripción (opcional)" value={form.desc} onChange={e => setForm(f => ({ ...f, desc: e.target.value }))} />
+              <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} />
+              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                <Btn full onClick={agregar} disabled={!form.monto || !form.categoria || guardando} style={{ flex: 1 }}>{guardando ? 'Guardando...' : 'Guardar'}</Btn>
+                <Btn variant="outline" onClick={() => setMostrarForm(false)} style={{ flex: 1 }}>Cancelar</Btn>
+              </div>
+            </div>
+          </Tarjeta>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ ASESOR IA ═══════════════════════════ */
+function AsesorIA({ perfil, txns, puntaje, msgs, setMsgs }) {
+  const [input, setInput] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const finRef = useRef(null);
+  const cur = perfil.moneda || 'USD';
+
+  useEffect(() => finRef.current?.scrollIntoView({ behavior: 'smooth' }), [msgs]);
+
+  const enviar = async () => {
+    if (!input.trim() || cargando || !perfil.apiKey) return;
+    const msg = input.trim(); setInput('');
+    setMsgs(p => [...p, { rol: 'usuario', contenido: msg }]);
+    setCargando(true);
+    const now = new Date(), mo = now.getMonth();
+    const mGasto = txns.filter(t => t.tipo === 'gasto' && new Date(t.fecha).getMonth() === mo).reduce((s, t) => s + (+t.monto || 0), 0);
+    const ingreso = +perfil.ingreso || 0;
+
+    const sys = `Eres FARO — un asesor financiero de élite para Latinoamérica, brutalmente honesto y específico.
+
+PERFIL:
+- Nombre: ${perfil.nombre} | Edad: ${perfil.edad || 'N/D'} | País: ${perfil.pais}
+- Empleo: ${perfil.empleo} | Hijos: ${perfil.hijos || 0}
+- Ingreso mensual: ${cur} ${ingreso.toLocaleString()} | Gasto mes: ${cur} ${mGasto.toFixed(0)}
+- Flujo neto: ${cur} ${(ingreso - mGasto).toFixed(0)} | Ahorro: ${Math.round((ingreso - mGasto) / (ingreso || 1) * 100)}%
+- Ahorro acumulado: ${cur} ${perfil.ahorro || 0} | Deuda: ${cur} ${perfil.deuda || 0}
+- Riesgo: ${perfil.toleranciaRiesgo}/10 | Puntaje: ${puntaje}/100
+- Metas: ${(perfil.metas || []).join(', ') || 'Ninguna'}
+
+REGLAS: usa números reales, sé directo, máximo 200 palabras, responde en el idioma del usuario.
+${perfil.pais === 'Chile' ? 'CHILE: APV, Fintual, BancoEstado, SII, AFP, Operación Renta disponibles.' : ''}`;
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': perfil.apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: sys,
+          messages: [...msgs.slice(-8).map(m => ({ role: m.rol === 'usuario' ? 'user' : 'assistant', content: m.contenido })), { role: 'user', content: msg }]
+        })
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || (data.error?.message || 'Error. Verifica tu API Key en Configuración.');
+      setMsgs(p => [...p, { rol: 'asistente', contenido: reply }]);
+    } catch {
+      setMsgs(p => [...p, { rol: 'asistente', contenido: 'Error de conexión. Intenta nuevamente.' }]);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const sugerencias = ['¿Cuáles son mis fugas financieras?', '¿Debo pagar deuda o invertir primero?', 'Dame un plan de acción de 90 días', '¿Cuánto necesito en el fondo de emergencia?', '¿Cómo mejorar mi puntaje financiero?'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', maxWidth: '740px', padding: '0 32px', margin: '0 auto' }}>
+      <div style={{ padding: '26px 0 14px', borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Asesor IA</div>
+        <div style={{ color: C.muted, fontSize: '13px', marginTop: '2px' }}>
+          Asesoría personalizada basada en tu perfil real
+          {!perfil.apiKey && <span style={{ color: C.warning, marginLeft: '8px' }}>· Agrega API Key en Configuración para activar</span>}
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '18px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: m.rol === 'usuario' ? 'flex-end' : 'flex-start' }}>
+            {m.rol === 'asistente' && <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: C.accentDim, border: `1px solid ${C.accent}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: C.accent, flexShrink: 0, marginRight: '10px', marginTop: '2px' }}>✦</div>}
+            <div style={{ maxWidth: '82%', padding: '12px 15px', borderRadius: '12px', fontSize: '14px', lineHeight: '1.65', whiteSpace: 'pre-wrap', background: m.rol === 'usuario' ? C.accent : C.card, color: m.rol === 'usuario' ? '#FFFFFF' : C.text, border: m.rol === 'asistente' ? `1px solid ${C.border}` : 'none', borderBottomRightRadius: m.rol === 'usuario' ? '3px' : '12px', borderBottomLeftRadius: m.rol === 'asistente' ? '3px' : '12px' }}>
+              {m.contenido}
+            </div>
+          </div>
+        ))}
+        {cargando && <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: C.accentDim, border: `1px solid ${C.accent}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: C.accent, flexShrink: 0 }}>✦</div>
+          <div style={{ padding: '12px 15px', background: C.card, border: `1px solid ${C.border}`, borderRadius: '12px', borderBottomLeftRadius: '3px', color: C.muted, fontSize: '13px' }}>Analizando tu perfil financiero...</div>
+        </div>}
+        <div ref={finRef} />
+      </div>
+      {msgs.length <= 1 && (
+        <div style={{ paddingBottom: '10px', flexShrink: 0 }}>
+          <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px' }}>Sugerencias:</div>
+          <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+            {sugerencias.map(s => (
+              <button key={s} onClick={() => setInput(s)} style={{ padding: '6px 13px', borderRadius: '20px', border: `1px solid ${C.border}`, background: C.surface, color: C.muted, fontSize: '12px', cursor: 'pointer' }}>{s}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div style={{ padding: '10px 0 22px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            placeholder={perfil.apiKey ? "Escribe tu consulta financiera..." : "Agrega tu API Key en Configuración para activar"}
+            value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !cargando && enviar()}
+            disabled={!perfil.apiKey}
+          />
+          <button onClick={enviar} disabled={cargando || !input.trim() || !perfil.apiKey} style={{ padding: '10px 20px', background: C.accent, border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, fontSize: '14px', flexShrink: 0, opacity: cargando || !input.trim() || !perfil.apiKey ? 0.4 : 1 }}>Enviar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ METAS ═══════════════════════════ */
+function Metas({ metas, setMetas, perfil }) {
+  const [mostrar, setMostrar] = useState(false);
+  const [form, setForm] = useState({ metaId: 'emergencia', objetivo: '', ahorrado: '', fecha: '' });
+  const cur = perfil.moneda || 'USD';
+  const uid = window.currentUser?.uid;
+
+  const agregar = async () => {
+    if (!form.objetivo || +form.objetivo <= 0) return;
+    const opt = METAS_OPT.find(g => g.id === form.metaId);
+    const meta = { id: form.metaId + Date.now(), label: opt?.label, icon: opt?.icon, color: opt?.color, objetivo: +form.objetivo, ahorrado: +form.ahorrado || 0, fecha: form.fecha };
+    if (uid && window.guardarMeta) {
+      try { await window.guardarMeta(uid, meta); } catch (e) { console.warn(e); }
+    }
+    setMetas(p => [...p, meta]);
+    setForm({ metaId: 'emergencia', objetivo: '', ahorrado: '', fecha: '' });
+    setMostrar(false);
+  };
+
+  const eliminar = async (id) => {
+    if (uid && window.eliminarMeta) {
+      try { await window.eliminarMeta(uid, id); } catch (e) { console.warn(e); }
+    }
+    setMetas(p => p.filter(x => x.id !== id));
+  };
+
+  const abonar = async (id, monto) => {
+    const nuevas = metas.map(x => x.id === id ? { ...x, ahorrado: Math.min(x.objetivo, (+x.ahorrado || 0) + monto) } : x);
+    if (uid && window.actualizarMeta) {
+      const meta = nuevas.find(x => x.id === id);
+      try { await window.actualizarMeta(uid, id, { ahorrado: meta.ahorrado }); } catch (e) { console.warn(e); }
+    }
+    setMetas(nuevas);
+  };
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '820px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '26px' }}>
+        <div>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Mis Metas</div>
+          <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>{metas.length} meta{metas.length !== 1 ? 's' : ''} activa{metas.length !== 1 ? 's' : ''}</div>
+        </div>
+        <Btn onClick={() => setMostrar(true)}>+ Nueva Meta</Btn>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        {metas.map(g => {
+          const ptc = g.objetivo ? Math.min(100, Math.round((+g.ahorrado / +g.objetivo) * 100)) : 0;
+          const faltante = Math.max(0, +g.objetivo - (+g.ahorrado || 0));
+          const mesesFalt = +perfil.ingreso && faltante ? Math.ceil(faltante / (+perfil.ingreso * 0.1)) : null;
+          return (
+            <Tarjeta key={g.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ fontSize: '26px' }}>{g.icon}</span>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: 500 }}>{g.label}</div>
+                    {g.fecha && <div style={{ fontSize: '12px', color: C.muted }}>Meta: {g.fecha}</div>}
+                  </div>
+                </div>
+                <button onClick={() => eliminar(g.id)} style={{ background: 'none', border: 'none', color: C.dim, fontSize: '20px', cursor: 'pointer' }}>×</button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '5px' }}>
+                <span style={{ color: C.muted }}>Progreso</span>
+                <span style={{ fontWeight: 600, color: g.color }}>{ptc}%</span>
+              </div>
+              <div style={{ height: '6px', background: C.border, borderRadius: '3px', overflow: 'hidden', marginBottom: '10px' }}>
+                <div style={{ height: '100%', width: `${ptc}%`, background: g.color, borderRadius: '3px', transition: 'width 0.5s' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: C.muted, marginBottom: '8px' }}>
+                <span>Ahorrado: <strong style={{ color: C.text }}>{fmt(g.ahorrado || 0, cur)}</strong></span>
+                <span>Meta: <strong style={{ color: C.text }}>{fmt(g.objetivo, cur)}</strong></span>
+              </div>
+              {mesesFalt && ptc < 100 && <div style={{ fontSize: '12px', color: C.muted, marginBottom: '9px' }}>~{mesesFalt} meses al 10% de ahorro mensual</div>}
+              {ptc >= 100 && <div style={{ fontSize: '12px', color: C.success, fontWeight: 500, marginBottom: '9px' }}>🎉 ¡Meta alcanzada!</div>}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input type="number" placeholder="Agregar ahorro..." style={{ flex: 1, padding: '7px 10px', fontSize: '12px' }}
+                  onKeyDown={e => { if (e.key === 'Enter' && +e.target.value > 0) { abonar(g.id, +e.target.value); e.target.value = ''; } }} />
+                <button onClick={e => { const inp = e.currentTarget.previousSibling; if (+inp.value > 0) { abonar(g.id, +inp.value); inp.value = ''; } }} style={{ padding: '7px 12px', background: C.accentDim, border: `1px solid ${C.accent}40`, borderRadius: '6px', color: C.accent, fontSize: '12px', cursor: 'pointer', flexShrink: 0 }}>+Agregar</button>
+              </div>
+            </Tarjeta>
+          );
+        })}
+        {metas.length === 0 && (
+          <Tarjeta style={{ gridColumn: '1/-1', textAlign: 'center', padding: '52px' }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>🎯</div>
+            <div style={{ fontSize: '16px', fontWeight: 500, marginBottom: '8px', fontFamily: 'Fraunces' }}>Sin metas definidas</div>
+            <div style={{ color: C.muted, fontSize: '13px', marginBottom: '22px' }}>Define tus objetivos financieros y lleva un seguimiento de tu progreso</div>
+            <Btn onClick={() => setMostrar(true)}>Crear mi primera meta</Btn>
+          </Tarjeta>
+        )}
+      </div>
+      {mostrar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={e => e.target === e.currentTarget && setMostrar(false)}>
+          <Tarjeta style={{ width: '420px', maxWidth: '95vw', padding: '28px' }}>
+            <div style={{ fontFamily: 'Fraunces', fontSize: '20px', fontWeight: 600, marginBottom: '18px' }}>Nueva Meta</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              <div><Etiqueta>Tipo de meta</Etiqueta>
+                <select value={form.metaId} onChange={e => setForm(f => ({ ...f, metaId: e.target.value }))}>
+                  {METAS_OPT.map(g => <option key={g.id} value={g.id}>{g.icon} {g.label}</option>)}
+                </select>
+              </div>
+              <div><Etiqueta>Monto objetivo ({cur}) *</Etiqueta><input type="number" placeholder="10000" value={form.objetivo} onChange={e => setForm(f => ({ ...f, objetivo: e.target.value }))} /></div>
+              <div><Etiqueta>Ya ahorrado ({cur})</Etiqueta><input type="number" placeholder="0" value={form.ahorrado} onChange={e => setForm(f => ({ ...f, ahorrado: e.target.value }))} /></div>
+              <div><Etiqueta>Fecha objetivo (opcional)</Etiqueta><input type="month" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} /></div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <Btn onClick={agregar} style={{ flex: 1 }} disabled={!form.objetivo || +form.objetivo <= 0}>Crear Meta</Btn>
+                <Btn variant="outline" onClick={() => setMostrar(false)} style={{ flex: 1 }}>Cancelar</Btn>
+              </div>
+            </div>
+          </Tarjeta>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ PROYECTOS ═══════════════════════════ */
+function ProyectosFinancieros({ perfil, proyectos, setProyectos }) {
+  const [mostrar, setMostrar] = useState(false);
+  const [form, setForm] = useState({ tipoId: 'casa', nombre: '', costo: '', ahorroActual: '', plazo: '', tasaEsperada: 6 });
+  const cur = perfil.moneda || 'USD';
+  const uid = window.currentUser?.uid;
+
+  const calcProyeccion = (costo, ahorroActual, plazo, tasa) => {
+    const faltante = Math.max(0, costo - ahorroActual);
+    const meses = parseInt(plazo) || 0;
+    if (!meses) return null;
+    const ahorroMensualSimple = Math.ceil(faltante / meses);
+    const r = (tasa / 100) / 12;
+    const ahorroMensualInv = r > 0 ? Math.ceil(faltante * (r * Math.pow(1 + r, meses)) / (Math.pow(1 + r, meses) - 1)) : ahorroMensualSimple;
+    const ing = +perfil.ingreso || 0;
+    const escenarios = [10, 15, 20].map(pct => {
+      const ahorroMens = ing * pct / 100;
+      const mesesNeed = r > 0 ? Math.ceil(Math.log(1 + (faltante * r) / ahorroMens) / Math.log(1 + r)) : Math.ceil(faltante / ahorroMens);
+      return { pct, ahorroMens: Math.round(ahorroMens), meses: isFinite(mesesNeed) ? mesesNeed : 999 };
+    });
+    return { faltante, ahorroMensualSimple, ahorroMensualInv, escenarios };
+  };
+
+  const agregar = async () => {
+    if (!form.costo || +form.costo <= 0) return;
+    const tipo = PROYECTOS_TIPOS.find(t => t.id === form.tipoId);
+    const proy = { id: form.tipoId + Date.now(), tipoId: form.tipoId, nombre: form.nombre || tipo.label, icon: tipo.icon, color: tipo.color, costo: +form.costo, ahorroActual: +form.ahorroActual || 0, plazo: form.plazo, tasaEsperada: +form.tasaEsperada || 6, creado: new Date().toISOString().split('T')[0] };
+    if (uid && window.guardarProyecto) {
+      try { await window.guardarProyecto(uid, proy); } catch (e) { console.warn(e); }
+    }
+    setProyectos(p => [...p, proy]);
+    setForm({ tipoId: 'casa', nombre: '', costo: '', ahorroActual: '', plazo: '', tasaEsperada: 6 });
+    setMostrar(false);
+  };
+
+  const eliminar = async (id) => {
+    if (uid && window.eliminarProyecto) {
+      try { await window.eliminarProyecto(uid, id); } catch (e) { console.warn(e); }
+    }
+    setProyectos(prev => prev.filter(x => x.id !== id));
+  };
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '900px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '26px' }}>
+        <div>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Proyectos Financieros</div>
+          <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>Simula, planifica y proyecta tus grandes compras y metas</div>
+        </div>
+        <Btn onClick={() => setMostrar(true)}>+ Nuevo Proyecto</Btn>
+      </div>
+      {proyectos.length === 0 && (
+        <Tarjeta style={{ textAlign: 'center', padding: '52px' }}>
+          <div style={{ fontSize: '44px', marginBottom: '14px' }}>🏗️</div>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Sin proyectos aún</div>
+          <div style={{ color: C.muted, fontSize: '13px', marginBottom: '22px' }}>Crea un proyecto para simular cómo financiar tu próxima gran compra</div>
+          <Btn onClick={() => setMostrar(true)}>Crear primer proyecto</Btn>
+        </Tarjeta>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {proyectos.map(p => {
+          const proy = calcProyeccion(p.costo, p.ahorroActual, p.plazo, p.tasaEsperada);
+          const ptc = p.costo ? Math.min(100, Math.round((p.ahorroActual / p.costo) * 100)) : 0;
+          return (
+            <Tarjeta key={p.id}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: `${p.color}18`, border: `1px solid ${p.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>{p.icon}</div>
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: 600, fontFamily: 'Fraunces' }}>{p.nombre}</div>
+                    <div style={{ fontSize: '12px', color: C.muted }}>Costo: {fmt(p.costo, cur)} · Plazo: {p.plazo || '—'} meses · Rentabilidad: {p.tasaEsperada}%</div>
+                  </div>
+                </div>
+                <button onClick={() => eliminar(p.id)} style={{ background: 'none', border: 'none', color: C.dim, fontSize: '20px', cursor: 'pointer' }}>×</button>
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '5px' }}>
+                  <span style={{ color: C.muted }}>Ahorrado: {fmt(p.ahorroActual, cur)}</span>
+                  <span style={{ color: p.color, fontWeight: 600 }}>{ptc}% completado</span>
+                </div>
+                <div style={{ height: '6px', background: C.border, borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${ptc}%`, background: p.color, borderRadius: '3px' }} />
+                </div>
+              </div>
+              {proy && (
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ padding: '12px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: '11px', color: C.muted, marginBottom: '5px' }}>Faltante</div>
+                      <div style={{ fontSize: '18px', fontWeight: 700, color: C.danger, fontFamily: 'Fraunces' }}>{fmt(proy.faltante, cur)}</div>
+                    </div>
+                    <div style={{ padding: '12px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: '11px', color: C.muted, marginBottom: '5px' }}>Ahorro mensual simple</div>
+                      <div style={{ fontSize: '18px', fontWeight: 700, color: C.warning, fontFamily: 'Fraunces' }}>{fmt(proy.ahorroMensualSimple, cur)}</div>
+                    </div>
+                    <div style={{ padding: '12px', background: C.surface, borderRadius: '10px', border: `1px solid ${p.color}40` }}>
+                      <div style={{ fontSize: '11px', color: C.muted, marginBottom: '5px' }}>Con inversión ({p.tasaEsperada}%)</div>
+                      <div style={{ fontSize: '18px', fontWeight: 700, color: p.color, fontFamily: 'Fraunces' }}>{fmt(proy.ahorroMensualInv, cur)}</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '13px', color: C.muted, marginBottom: '8px', fontWeight: 500 }}>Escenarios según tasa de ahorro:</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                    {proy.escenarios.map(e => (
+                      <div key={e.pct} style={{ padding: '10px', background: C.surface, borderRadius: '8px', border: `1px solid ${C.border}`, textAlign: 'center' }}>
+                        <div style={{ fontSize: '13px', fontWeight: 600, color: C.accent, marginBottom: '3px' }}>{e.pct}% ingreso</div>
+                        <div style={{ fontSize: '12px', color: C.muted }}>{fmt(e.ahorroMens, cur)}/mes</div>
+                        <div style={{ fontSize: '11px', color: C.dim, marginTop: '2px' }}>{e.meses < 12 ? `${e.meses} meses` : `${Math.ceil(e.meses / 12)} años`}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Tarjeta>
+          );
+        })}
+      </div>
+      {mostrar && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={e => e.target === e.currentTarget && setMostrar(false)}>
+          <Tarjeta style={{ width: '460px', maxWidth: '95vw', padding: '28px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontFamily: 'Fraunces', fontSize: '20px', fontWeight: 600, marginBottom: '18px' }}>Nuevo Proyecto</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div><Etiqueta>Tipo de proyecto</Etiqueta>
+                <select value={form.tipoId} onChange={e => setForm(f => ({ ...f, tipoId: e.target.value }))}>
+                  {PROYECTOS_TIPOS.map(t => <option key={t.id} value={t.id}>{t.icon} {t.label}</option>)}
+                </select>
+              </div>
+              <div><Etiqueta>Nombre del proyecto (opcional)</Etiqueta><input placeholder="Ej: Casa en Ñuñoa" value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} /></div>
+              <div><Etiqueta>Costo total estimado ({cur}) *</Etiqueta><input type="number" placeholder="50000" value={form.costo} onChange={e => setForm(f => ({ ...f, costo: e.target.value }))} /></div>
+              <div><Etiqueta>Ahorro actual destinado ({cur})</Etiqueta><input type="number" placeholder="0" value={form.ahorroActual} onChange={e => setForm(f => ({ ...f, ahorroActual: e.target.value }))} /></div>
+              <div><Etiqueta>Plazo deseado (meses)</Etiqueta><input type="number" placeholder="24" value={form.plazo} onChange={e => setForm(f => ({ ...f, plazo: e.target.value }))} /></div>
+              <div>
+                <Etiqueta>Rentabilidad anual esperada: <span style={{ color: C.accent }}>{form.tasaEsperada}%</span></Etiqueta>
+                <input type="range" min="0" max="20" step="0.5" value={form.tasaEsperada} onChange={e => setForm(f => ({ ...f, tasaEsperada: +e.target.value }))} style={{ background: C.border, height: '4px', cursor: 'pointer' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <Btn onClick={agregar} style={{ flex: 1 }} disabled={!form.costo || +form.costo <= 0}>Crear Proyecto</Btn>
+                <Btn variant="outline" onClick={() => setMostrar(false)} style={{ flex: 1 }}>Cancelar</Btn>
+              </div>
+            </div>
+          </Tarjeta>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ CÓMO FINANCIARME ═══════════════════════════ */
+function ComoFinanciarme({ perfil }) {
+  const [tipoSel, setTipoSel] = useState('hipotecario');
+  const [calcHip, setCalcHip] = useState({ valorProp: '', pie: '20', plazo: '20', tasa: '3.5' });
+  const cur = perfil.moneda || 'USD';
+
+  const calcCuota = (v, pie, plazo, tasa) => {
+    const prestamo = v * (1 - pie / 100);
+    const r = (tasa / 100) / 12, n = plazo * 12;
+    if (r === 0) return prestamo / n;
+    return prestamo * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  };
+
+  const cuota = calcHip.valorProp && +calcHip.valorProp > 0 ? Math.round(calcCuota(+calcHip.valorProp, +calcHip.pie, +calcHip.plazo, +calcHip.tasa)) : 0;
+  const prestamo = calcHip.valorProp ? Math.round(+calcHip.valorProp * (1 - +calcHip.pie / 100)) : 0;
+  const pieMonto = calcHip.valorProp ? Math.round(+calcHip.valorProp * (+calcHip.pie / 100)) : 0;
+  const ingNecesario = cuota > 0 ? Math.round(cuota / 0.25) : 0;
+  const puedeAplicar = (+perfil.ingreso || 0) >= ingNecesario;
+
+  const tipos = [
+    { id: 'hipotecario', icon: '🏠', label: 'Crédito Hipotecario' },
+    { id: 'automotriz', icon: '🚗', label: 'Crédito Automotriz' },
+    { id: 'consumo', icon: '💳', label: 'Crédito de Consumo' },
+    { id: 'historial', icon: '📈', label: 'Construir Historial' },
+    { id: 'documentos', icon: '📄', label: 'Documentos Clave' },
+  ];
+
+  const guias = {
+    hipotecario: {
+      titulo: 'Crédito Hipotecario — Guía Completa',
+      pasos: [
+        { n: '1', t: 'Calcula tu capacidad real', desc: `El banco aprueba si la cuota no supera el 25% de tu ingreso. Con ${fmt(+perfil.ingreso || 0, cur)}/mes, puedes pagar hasta ${fmt((+perfil.ingreso || 0) * 0.25, cur)}/mes.`, color: C.accent },
+        { n: '2', t: 'Reúne el pie (20%)', desc: 'Los bancos exigen mínimo 10–20% del valor. El 20% te da mejores tasas. Acumula en depósitos a plazo o fondos mutuos conservadores.', color: C.gold },
+        { n: '3', t: 'Limpia tu historial crediticio', desc: 'Revisa DICOM (Chile). Paga deudas morosas. Mantén créditos al día por 6 meses antes de postular.', color: C.info },
+        { n: '4', t: 'Cotiza en al menos 3 bancos', desc: 'Compara la CAE (Costo Anual Equivalente), no solo la tasa. Incluye seguros. Una diferencia de 0.5% en tasa = miles en 20 años.', color: C.purple },
+        { n: '5', t: 'Simula en la CMF', desc: 'El Simulador Hipotecario de cmfchile.cl te permite comparar ofertas oficialmente.', color: C.success },
+      ],
+      docs: ['Últimas 3 liquidaciones de sueldo', 'Certificado de AFP (últimos 12 meses)', 'Declaración de renta (Formulario 22)', 'Contrato de trabajo', 'Identificación vigente'],
+    },
+    automotriz: {
+      titulo: 'Crédito Automotriz vs Leasing',
+      pasos: [
+        { n: '1', t: 'Crédito directo', desc: 'Obtienes la propiedad de inmediato. Tasa típica: 0.8–1.8% mensual. Puedes vender en cualquier momento.', color: C.accent },
+        { n: '2', t: 'Leasing automotriz', desc: 'Pagas por usar, no por ser dueño. Al final puedes comprar por el valor residual. Bueno para empresas (deducible).', color: C.gold },
+        { n: '3', t: 'Regla general', desc: `El auto no debería superar el 20% de tu patrimonio. La cuota no debería superar el 10–12% de tu ingreso (${fmt((+perfil.ingreso || 0) * 0.12, cur)}/mes).`, color: C.info },
+        { n: '4', t: 'Ahorra primero el pie', desc: 'Al menos 20% del valor. Reduce la cuota y mejora tu tasa significativamente.', color: C.warning },
+      ],
+      docs: ['Liquidaciones de sueldo (últimas 3)', 'Cédula de identidad'],
+    },
+    consumo: {
+      titulo: 'Crédito de Consumo — Cuándo y Cómo',
+      pasos: [
+        { n: '1', t: 'Úsalo solo para activos', desc: 'Un crédito para vacaciones o ropa es una trampa. Solo vale para educación, reparación del hogar o equipamiento de negocio.', color: C.accent },
+        { n: '2', t: 'Regla del 30%', desc: `Tus cuotas totales no deberían superar el 30% de tu ingreso. Límite: ${fmt((+perfil.ingreso || 0) * 0.3, cur)}/mes.`, color: C.danger },
+        { n: '3', t: 'CAE = la métrica real', desc: 'Una tasa de 1.2% mensual es 14.4% anual. La CAE incluye todos los costos. Compara siempre en CAE.', color: C.info },
+        { n: '4', t: 'Tarjeta sin interés primero', desc: 'Si puedes pagar en 3–6 cuotas sin interés con tu TC, es mejor que un crédito. Pero paga siempre el total.', color: C.gold },
+      ],
+      docs: ['Liquidaciones de sueldo', 'Cédula de identidad', 'Extracto bancario últimos 3 meses'],
+    },
+    historial: {
+      titulo: 'Cómo Construir un Historial Crediticio Sólido',
+      pasos: [
+        { n: '1', t: 'Primer paso: tarjeta básica', desc: 'Sin historial, pide una tarjeta de tienda retail o banco con bajo cupo. Úsala solo para gastos planificados y paga el total.', color: C.accent },
+        { n: '2', t: 'Paga siempre a tiempo', desc: 'El historial de pagos es el 35% de tu puntaje. Activa el pago automático del mínimo como seguro.', color: C.gold },
+        { n: '3', t: 'Usa máximo el 30% del cupo', desc: 'Si tienes $1.000.000 de cupo, no uses más de $300.000. Esto aumenta tu score considerablemente.', color: C.info },
+        { n: '4', t: 'Diversifica gradualmente', desc: 'Después de 12–18 meses de buen historial: agrega un crédito pequeño. Demuestra capacidad de manejar distintos tipos de deuda.', color: C.purple },
+        { n: '5', t: 'Monitorea tu historial', desc: perfil.pais === 'Chile' ? 'Consulta DICOM en Equifax o tu score en portales bancarios. Meta: cero deudas morosas.' : 'Consulta tu buró de crédito regularmente. Detecta errores y corrígelos.', color: C.success },
+      ],
+      docs: ['No necesitas documentos para comenzar — empieza con lo que tienes'],
+    },
+    documentos: {
+      titulo: 'Kit de Documentos para Solicitudes Crediticias',
+      pasos: [
+        { n: '📋', t: 'Identidad', desc: 'Cédula vigente, RUT, pasaporte si eres extranjero.', color: C.accent },
+        { n: '💰', t: 'Ingresos', desc: perfil.empleo === 'formal' ? 'Últimas 3–6 liquidaciones, contrato de trabajo, certificado de antigüedad.' : 'Últimas 6 declaraciones de IVA/PPM, declaración de renta, balances tributarios.', color: C.gold },
+        { n: '🏦', t: 'Financieros', desc: 'Extracto de cuenta (3–6 meses), certificado AFP, estado de deudas.', color: C.info },
+        { n: '🏠', t: 'Hipotecario adicional', desc: 'Tasación del inmueble, promesa de compraventa, certificado de dominio vigente.', color: C.purple },
+      ],
+      docs: [],
+    },
+  };
+
+  const guia = guias[tipoSel];
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '900px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>¿Cómo Financiarme?</div>
+        <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>Guías paso a paso para acceder a financiamiento en {perfil.pais}</div>
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        {tipos.map(t => (
+          <button key={t.id} onClick={() => setTipoSel(t.id)} style={{ padding: '9px 18px', borderRadius: '20px', border: `1px solid ${tipoSel === t.id ? C.accent : C.border}`, background: tipoSel === t.id ? C.accentDim : 'transparent', color: tipoSel === t.id ? C.accent : C.muted, fontSize: '13px', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontFamily: 'Fraunces', fontSize: '20px', fontWeight: 600, marginBottom: '18px' }}>{guia.titulo}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+        {guia.pasos.map((p, i) => (
+          <div key={i} style={{ display: 'flex', gap: '14px', padding: '16px', background: C.card, border: `1px solid ${C.border}`, borderLeft: `3px solid ${p.color}`, borderRadius: '10px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: `${p.color}18`, border: `1px solid ${p.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 700, color: p.color, flexShrink: 0 }}>{p.n}</div>
+            <div><div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>{p.t}</div><div style={{ fontSize: '13px', color: C.muted, lineHeight: '1.6' }}>{p.desc}</div></div>
+          </div>
+        ))}
+      </div>
+      {guia.docs.length > 0 && (
+        <Tarjeta style={{ marginBottom: '20px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '12px' }}>📄 Documentos que necesitarás</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            {guia.docs.map((d, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: C.muted }}>
+                <span style={{ color: C.accent }}>✓</span>{d}
+              </div>
+            ))}
+          </div>
+        </Tarjeta>
+      )}
+      {tipoSel === 'hipotecario' && (
+        <Tarjeta>
+          <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '16px' }}>🧮 Simulador de Crédito Hipotecario</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+            <div><Etiqueta>Valor de la propiedad ({cur})</Etiqueta><input type="number" placeholder="100000" value={calcHip.valorProp} onChange={e => setCalcHip(c => ({ ...c, valorProp: e.target.value }))} /></div>
+            <div><Etiqueta>Pie: {calcHip.pie}%</Etiqueta><input type="range" min="10" max="50" value={calcHip.pie} onChange={e => setCalcHip(c => ({ ...c, pie: e.target.value }))} style={{ marginTop: '8px' }} /></div>
+            <div><Etiqueta>Plazo: {calcHip.plazo} años</Etiqueta><input type="range" min="5" max="30" value={calcHip.plazo} onChange={e => setCalcHip(c => ({ ...c, plazo: e.target.value }))} style={{ marginTop: '8px' }} /></div>
+            <div><Etiqueta>Tasa anual: {calcHip.tasa}%</Etiqueta><input type="range" min="1" max="10" step="0.1" value={calcHip.tasa} onChange={e => setCalcHip(c => ({ ...c, tasa: e.target.value }))} style={{ marginTop: '8px' }} /></div>
+          </div>
+          {cuota > 0 && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '10px' }}>
+                {[
+                  { l: 'Cuota mensual', v: fmt(cuota, cur), c: C.accent },
+                  { l: 'Monto a financiar', v: fmt(prestamo, cur), c: C.text },
+                  { l: 'Pie requerido', v: fmt(pieMonto, cur), c: C.gold },
+                  { l: 'Ingreso mínimo', v: fmt(ingNecesario, cur), c: puedeAplicar ? C.success : C.danger },
+                ].map(({ l, v, c }) => (
+                  <div key={l} style={{ padding: '12px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}`, textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '5px' }}>{l}</div>
+                    <div style={{ fontSize: '16px', fontWeight: 700, color: c, fontFamily: 'Fraunces' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: '12px', padding: '12px', borderRadius: '8px', fontSize: '13px', background: puedeAplicar ? 'rgba(34,215,122,0.08)' : 'rgba(255,107,107,0.08)', border: `1px solid ${puedeAplicar ? 'rgba(34,215,122,0.25)' : 'rgba(255,107,107,0.25)'}`, color: puedeAplicar ? C.success : C.danger }}>
+                {puedeAplicar ? `✅ Con tu ingreso de ${fmt(+perfil.ingreso || 0, cur)}/mes, calificas. La cuota representa el ${Math.round(cuota / (+perfil.ingreso || 1) * 100)}% de tu ingreso.` : `⚠️ Tu ingreso (${fmt(+perfil.ingreso || 0, cur)}) está bajo el mínimo requerido (${fmt(ingNecesario, cur)}). Reduce el préstamo o aumenta ingresos.`}
+              </div>
+            </>
+          )}
+        </Tarjeta>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ MIS IMPUESTOS ═══════════════════════════ */
+function MisImpuestos({ perfil }) {
+  const [calcIngreso, setCalcIngreso] = useState(+perfil.ingreso * 12 || '');
+  const [tabActiva, setTabActiva] = useState('resumen');
+  const cur = perfil.moneda || 'USD';
+  const esChile = perfil.pais === 'Chile';
+  const resultado = calcIngreso && +calcIngreso > 0 ? calcImpuestoChile(+calcIngreso, cur) : null;
+
+  const tabs = [
+    { id: 'resumen', label: 'Resumen' },
+    { id: 'tramos', label: 'Tramos' },
+    { id: 'cotizaciones', label: 'Cotizaciones' },
+    { id: 'declaracion', label: 'Cómo Declarar' },
+    { id: 'deducibles', label: 'Gastos Deducibles' },
+  ];
+
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '900px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '22px' }}>
+        <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Mis Impuestos</div>
+        <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>Guía tributaria para {perfil.pais}</div>
+      </div>
+      {!esChile && (
+        <Tarjeta style={{ padding: '24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>🌎</div>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Guía tributaria de {perfil.pais}</div>
+          <div style={{ color: C.muted, fontSize: '14px', lineHeight: '1.7' }}>Esta sección está optimizada para Chile. El Asesor IA puede orientarte sobre tributación en {perfil.pais}.</div>
+        </Tarjeta>
+      )}
+      {esChile && (
+        <>
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '22px', flexWrap: 'wrap' }}>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => setTabActiva(t.id)} style={{ padding: '8px 18px', borderRadius: '20px', border: `1px solid ${tabActiva === t.id ? C.accent : C.border}`, background: tabActiva === t.id ? C.accentDim : 'transparent', color: tabActiva === t.id ? C.accent : C.muted, fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>{t.label}</button>
+            ))}
+          </div>
+          {tabActiva === 'resumen' && (
+            <div>
+              <div style={{ marginBottom: '18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {perfil.empleo === 'formal' && (
+                  <div style={{ padding: '14px', background: 'rgba(0,200,150,0.07)', border: '1px solid rgba(0,200,150,0.2)', borderRadius: '10px', fontSize: '13px', color: C.accent, lineHeight: '1.65' }}>
+                    <strong>Asalariado:</strong> Tu impuesto se descuenta mensualmente. Debes hacer la <strong>Operación Renta</strong> cada abril en <strong>sii.cl</strong> — en muchos casos obtienes devolución.
+                  </div>
+                )}
+                {(perfil.empleo === 'entrepreneur' || perfil.empleo === 'freelance') && (
+                  <div style={{ padding: '14px', background: 'rgba(240,180,41,0.07)', border: '1px solid rgba(240,180,41,0.2)', borderRadius: '10px', fontSize: '13px', color: C.gold, lineHeight: '1.65' }}>
+                    <strong>Independiente:</strong> Debes emitir <strong>Boletas de Honorarios</strong>. Retención 13.75%. Paga PPM mensualmente si tienes actividades de 1ª categoría.
+                  </div>
+                )}
+              </div>
+              <Tarjeta style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '14px' }}>🧮 Calculadora Impuesto a la Renta</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                  <div>
+                    <Etiqueta>Ingreso anual bruto</Etiqueta>
+                    <input type="number" placeholder="12000000" value={calcIngreso} onChange={e => setCalcIngreso(e.target.value)} />
+                    <div style={{ fontSize: '11px', color: C.dim, marginTop: '4px' }}>Tu ingreso mensual × 12 = {fmt((+perfil.ingreso || 0) * 12, cur)}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <Btn onClick={() => setCalcIngreso((+perfil.ingreso || 0) * 12)} variant="outline" style={{ width: '100%' }}>Usar mi ingreso</Btn>
+                  </div>
+                </div>
+                {resultado && (
+                  <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '10px', marginBottom: '14px' }}>
+                      <div style={{ padding: '14px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: '11px', color: C.muted, marginBottom: '6px' }}>Ingreso Anual</div>
+                        <div style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'Fraunces' }}>{resultado.ingUTM} UTM</div>
+                      </div>
+                      <div style={{ padding: '14px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: '11px', color: C.muted, marginBottom: '6px' }}>Impuesto Estimado</div>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: C.danger, fontFamily: 'Fraunces' }}>${resultado.impuesto.toLocaleString('es-CL')}</div>
+                        <div style={{ fontSize: '12px', color: C.muted, marginTop: '3px' }}>~{Math.round(resultado.impuesto / resultado.ingCLP * 100)}% tasa efectiva</div>
+                      </div>
+                      <div style={{ padding: '14px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.accent}30` }}>
+                        <div style={{ fontSize: '11px', color: C.muted, marginBottom: '6px' }}>Tramo</div>
+                        <div style={{ fontSize: '18px', fontWeight: 700, color: C.accent, fontFamily: 'Fraunces' }}>{resultado.tramo}</div>
+                      </div>
+                    </div>
+                    <div style={{ padding: '12px', background: C.accentDim, border: `1px solid ${C.accent}25`, borderRadius: '8px', fontSize: '13px', color: C.muted, lineHeight: '1.6' }}>
+                      💡 <strong style={{ color: C.text }}>Tip:</strong> Un APV te permite descontar hasta 50 UF/mes de la base imponible. Con tu tramo, esto puede ahorrarte significativamente.
+                    </div>
+                  </div>
+                )}
+              </Tarjeta>
+              <Tarjeta>
+                <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '14px' }}>📅 Fechas Clave</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {[
+                    { fecha: '30 Abril', desc: 'Operación Renta — Formulario 22 en sii.cl', tipo: 'danger' },
+                    { fecha: 'Día 20 c/mes', desc: 'PPM — si tienes empresa o 1ª categoría', tipo: 'warning' },
+                    { fecha: 'Dic–Ene', desc: 'Revisar retenciones antes del cierre tributario', tipo: 'info' },
+                  ].map((f, i) => {
+                    const cs = { danger: C.danger, warning: C.warning, info: C.info };
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: '12px', padding: '11px', background: C.surface, borderRadius: '8px', border: `1px solid ${C.border}` }}>
+                        <div style={{ minWidth: '70px', fontSize: '12px', fontWeight: 600, color: cs[f.tipo] }}>{f.fecha}</div>
+                        <div style={{ fontSize: '13px', color: C.muted }}>{f.desc}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Tarjeta>
+            </div>
+          )}
+          {tabActiva === 'tramos' && (
+            <Tarjeta>
+              <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>Tramos IGC — Chile 2025</div>
+              <div style={{ fontSize: '12px', color: C.muted, marginBottom: '16px' }}>UTM mensual: ${UTM_MENSUAL.toLocaleString('es-CL')} CLP</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      {['Tramo', 'Desde (UTM/año)', 'Hasta', 'Tasa'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', color: C.muted, fontWeight: 500, fontSize: '12px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {TRAMOS_CHILE.map((t, i) => {
+                      const activo = resultado && +resultado.ingUTM > t.desde && (t.hasta === Infinity || +resultado.ingUTM <= t.hasta);
+                      return (
+                        <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, background: activo ? C.accentDim : 'transparent' }}>
+                          <td style={{ padding: '10px 12px', color: activo ? C.accent : C.text, fontWeight: activo ? 600 : 400 }}>{t.tasa === 0 ? 'Exento' : t.label}{activo ? ' ◀ Tú' : ''}</td>
+                          <td style={{ padding: '10px 12px', color: C.muted }}>{t.desde}</td>
+                          <td style={{ padding: '10px 12px', color: C.muted }}>{t.hasta === Infinity ? 'Sin límite' : t.hasta}</td>
+                          <td style={{ padding: '10px 12px', color: t.tasa === 0 ? C.success : t.tasa > 20 ? C.danger : C.warning, fontWeight: 500 }}>{t.tasa}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Tarjeta>
+          )}
+          {tabActiva === 'cotizaciones' && (
+            <Tarjeta>
+              <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '16px' }}>Descuentos Previsionales — Trabajador Dependiente</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {[
+                  { desc: 'AFP (jubilación)', pct: '10.5%', nota: '+ comisión AFP (~1-1.44%)' },
+                  { desc: 'Salud (Fonasa o Isapre)', pct: '7%', nota: 'Fonasa: 7%. Isapre: 7% mínimo' },
+                  { desc: 'Seguro de Cesantía', pct: '0.6%', nota: 'Trabajador. Empleador: 2.4%' },
+                  { desc: 'TOTAL aprox. descuentos', pct: '~20%', nota: 'Del sueldo bruto mensual' },
+                ].map((r, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '12px', padding: '11px', background: i === 3 ? C.accentDim : C.surface, borderRadius: '8px', border: `1px solid ${i === 3 ? C.accent + '30' : C.border}` }}>
+                    <div style={{ fontSize: '13px', color: C.muted }}>{r.desc}</div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: i === 3 ? C.accent : C.warning }}>{r.pct}</div>
+                    <div style={{ fontSize: '12px', color: C.dim, maxWidth: '200px' }}>{r.nota}</div>
+                  </div>
+                ))}
+              </div>
+            </Tarjeta>
+          )}
+          {tabActiva === 'declaracion' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {[
+                { n: '1', t: 'Accede al SII (sii.cl)', desc: 'Ingresa con tu RUT y Clave Tributaria. Si no tienes clave, solicítala online o en cualquier oficina SII.', color: C.accent },
+                { n: '2', t: 'Formulario 22 — Operación Renta', desc: 'En abril aparecerá el F22 pre-llenado. Revísalo con cuidado — puede haber errores o ingresos faltantes.', color: C.gold },
+                { n: '3', t: 'Revisa los ingresos declarados', desc: 'Compara con tus liquidaciones de sueldo. Los bancos reportan intereses. Las AFPs reportan retiros.', color: C.info },
+                { n: '4', t: 'Agrega deducciones', desc: 'APV, donaciones, intereses hipotecarios (hasta 8 UTA), gastos de educación. Cada deducción reduce tu base imponible.', color: C.purple },
+                { n: '5', t: 'Envía y espera resolución', desc: 'Devolución en 3–5 días hábiles. Si debes pagar: hasta el 30 de abril. Con cuotas: hasta el 30 de junio.', color: C.success },
+              ].map((p, i) => (
+                <div key={i} style={{ display: 'flex', gap: '14px', padding: '15px', background: C.card, border: `1px solid ${C.border}`, borderLeft: `3px solid ${p.color}`, borderRadius: '10px' }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: `${p.color}18`, border: `1px solid ${p.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 700, color: p.color, flexShrink: 0 }}>{p.n}</div>
+                  <div><div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '3px' }}>{p.t}</div><div style={{ fontSize: '13px', color: C.muted, lineHeight: '1.6' }}>{p.desc}</div></div>
+                </div>
+              ))}
+            </div>
+          )}
+          {tabActiva === 'deducibles' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              {[
+                { t: 'APV', desc: 'Hasta 50 UF/mes. El más potente para reducir impuestos.', c: C.accent },
+                { t: 'Intereses hipotecarios', desc: 'Hasta 8 UTA anuales por crédito de vivienda.', c: C.gold },
+                { t: 'Donaciones certificadas', desc: 'Fundaciones y universidades acreditadas.', c: C.info },
+                { t: 'Gastos educación', desc: 'Hijos menores 25 años. Máx 1.74 UF/mes por hijo.', c: C.purple },
+                { t: 'Cotizaciones adicionales', desc: 'AFP voluntaria, seguro complementario.', c: C.success },
+                { t: 'Gastos rechazados', desc: 'Solo empresarios con actividades 1ª categoría.', c: C.warning },
+              ].map((item, i) => (
+                <div key={i} style={{ padding: '15px', background: C.card, border: `1px solid ${C.border}`, borderTop: `3px solid ${item.c}`, borderRadius: '10px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 500, color: item.c, marginBottom: '6px' }}>{item.t}</div>
+                  <div style={{ fontSize: '13px', color: C.muted, lineHeight: '1.5' }}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ INTEGRACIONES ═══════════════════════════ */
+function Integraciones() {
+  const [conn, setConn] = useState({});
+  const [sel, setSel] = useState(null);
+  const total = Object.values(conn).filter(Boolean).length;
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '820px', margin: '0 auto' }}>
+      <div style={{ marginBottom: '24px' }}>
+        <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Integraciones</div>
+        <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>{total} conectada{total !== 1 ? 's' : ''} · Sincroniza tus cuentas para datos en tiempo real</div>
+      </div>
+      <div style={{ padding: '13px 17px', background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.2)', borderRadius: '10px', marginBottom: '22px', fontSize: '13px', color: C.info, lineHeight: '1.6' }}>
+        🔒 Todas las integraciones usan OAuth 2.0. FARO nunca almacena tus credenciales bancarias.
+      </div>
+      <div style={{ marginBottom: '14px', fontSize: '12px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px' }}>Bancos y Cuentas</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '22px' }}>
+        {INTEGRACIONES.slice(0, 3).map(intg => {
+          const esC = conn[intg.id];
+          return (
+            <Tarjeta key={intg.id} onClick={() => setSel(intg)} style={{ cursor: 'pointer', border: `1px solid ${esC ? C.success : C.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '9px' }}>
+                <span style={{ fontSize: '26px' }}>{intg.icon}</span>
+                <Badge color={esC ? C.success : C.muted}>{esC ? '● Conectado' : '○ Conectar'}</Badge>
+              </div>
+              <div style={{ fontSize: '15px', fontWeight: 500, marginBottom: '3px' }}>{intg.nombre}</div>
+              <div style={{ fontSize: '12px', color: C.muted, marginBottom: '5px' }}>{intg.desc}</div>
+              <div style={{ fontSize: '11px', color: C.dim }}>{intg.region}</div>
+            </Tarjeta>
+          );
+        })}
+      </div>
+      <div style={{ marginBottom: '14px', fontSize: '12px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px' }}>Inversiones y Pagos</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+        {INTEGRACIONES.slice(3).map(intg => {
+          const esC = conn[intg.id];
+          return (
+            <Tarjeta key={intg.id} onClick={() => setSel(intg)} style={{ cursor: 'pointer', border: `1px solid ${esC ? C.success : C.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '24px' }}>{intg.icon}</span>
+                <span style={{ fontSize: '11px', color: esC ? C.success : C.muted }}>{esC ? '● On' : '○'}</span>
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '3px' }}>{intg.nombre}</div>
+              <div style={{ fontSize: '12px', color: C.muted }}>{intg.desc}</div>
+            </Tarjeta>
+          );
+        })}
+      </div>
+      {sel && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={e => e.target === e.currentTarget && setSel(null)}>
+          <Tarjeta style={{ width: '420px', maxWidth: '95vw', padding: '28px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '18px' }}>
+              <span style={{ fontSize: '32px' }}>{sel.icon}</span>
+              <div>
+                <div style={{ fontFamily: 'Fraunces', fontSize: '20px', fontWeight: 600 }}>{sel.nombre}</div>
+                <div style={{ fontSize: '13px', color: C.muted }}>{sel.region} · {sel.desc}</div>
+              </div>
+            </div>
+            {sel.bancos.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ fontSize: '12px', color: C.muted, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Instituciones soportadas</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {sel.bancos.map(b => <Badge key={b} color={C.muted}>{b}</Badge>)}
+                </div>
+              </div>
+            )}
+            <div style={{ padding: '12px', background: 'rgba(240,180,41,0.07)', border: '1px solid rgba(240,180,41,0.2)', borderRadius: '8px', fontSize: '12px', color: C.warning, marginBottom: '16px', lineHeight: '1.6' }}>
+              ⚙️ La integración real requiere cuenta developer de {sel.nombre} y configuración OAuth. Este demo simula el flujo.
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <Btn onClick={() => { setConn(c => ({ ...c, [sel.id]: !c[sel.id] })); setSel(null); }} style={{ flex: 1 }} variant={conn[sel.id] ? 'danger' : 'primary'}>
+                {conn[sel.id] ? 'Desconectar' : 'Conectar cuenta'}
+              </Btn>
+              <Btn variant="outline" onClick={() => setSel(null)} style={{ flex: 1 }}>Cancelar</Btn>
+            </div>
+          </Tarjeta>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════ CONFIGURACIÓN ═══════════════════════════ */
+function Configuracion({ perfil, setPerfil }) {
+  const [borrador, setBorrador] = useState({ ...perfil });
+  const [guardado, setGuardado] = useState(false);
+  const up = (f, v) => setBorrador(p => ({ ...p, [f]: v }));
+  const upG = (f, v) => setBorrador(p => ({ ...p, gastos: { ...p.gastos, [f]: v } }));
+  const guardar = async () => {
+    setPerfil({ ...borrador });
+    const uid = window.currentUser?.uid;
+    if (uid && window.guardarPerfil) {
+      try { await window.guardarPerfil(uid, borrador); } catch (e) { console.warn(e); }
+    }
+    setGuardado(true);
+    setTimeout(() => setGuardado(false), 2500);
+  };
+  const Sec = ({ titulo, children }) => (
+    <Tarjeta style={{ marginBottom: '14px' }}>
+      <div style={{ fontSize: '12px', fontWeight: 500, color: C.accent, marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>{titulo}</div>
+      {children}
+    </Tarjeta>
+  );
+  return (
+    <div style={{ padding: '28px 32px', maxWidth: '640px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '26px' }}>
+        <div>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Configuración</div>
+          <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>Datos guardados en Firebase bajo tu cuenta</div>
+        </div>
+        <Btn onClick={guardar} variant={guardado ? 'success' : 'primary'}>{guardado ? '✅ Guardado' : 'Guardar cambios'}</Btn>
+      </div>
+      <Sec titulo="Datos Personales">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '11px' }}>
+          <div><Etiqueta>Nombre</Etiqueta><input value={borrador.nombre} onChange={e => up('nombre', e.target.value)} /></div>
+          <div><Etiqueta>Edad</Etiqueta><input type="number" value={borrador.edad || ''} onChange={e => up('edad', e.target.value)} /></div>
+          <div><Etiqueta>País</Etiqueta>
+            <select value={borrador.pais} onChange={e => up('pais', e.target.value)}>
+              {['Chile', 'Colombia', 'México', 'Perú', 'Argentina', 'Brasil', 'España', 'Otro'].map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+          <div><Etiqueta>Tipo de empleo</Etiqueta>
+            <select value={borrador.empleo} onChange={e => up('empleo', e.target.value)}>
+              <option value="formal">Asalariado formal</option>
+              <option value="entrepreneur">Emprendedor</option>
+              <option value="freelance">Freelancer</option>
+              <option value="retired">Jubilado</option>
+            </select>
+          </div>
+        </div>
+      </Sec>
+      <Sec titulo="Ingresos">
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '11px' }}>
+          <div><Etiqueta>Ingreso mensual líquido</Etiqueta><input type="number" value={borrador.ingreso || ''} onChange={e => up('ingreso', e.target.value)} /></div>
+          <div><Etiqueta>Moneda</Etiqueta>
+            <select value={borrador.moneda} onChange={e => up('moneda', e.target.value)}>
+              {['CLP', 'USD', 'COP', 'MXN', 'PEN', 'ARS', 'EUR', 'BRL'].map(c => <option key={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ marginTop: '11px' }}><Etiqueta>Ingresos adicionales</Etiqueta><input type="number" value={borrador.ingresoAdicional || ''} onChange={e => up('ingresoAdicional', e.target.value)} /></div>
+      </Sec>
+      <Sec titulo="Gastos Fijos Mensuales">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          {[['arriendo', 'Arriendo/Dividendo'], ['alimentacion', 'Alimentación'], ['transporte', 'Transporte'], ['electricidad', 'Electricidad'], ['agua', 'Agua'], ['gas', 'Gas'], ['internet', 'Internet'], ['telefono', 'Teléfono'], ['seguro', 'Seguros'], ['otros', 'Otros']].map(([k, l]) => (
+            <div key={k}><Etiqueta>{l}</Etiqueta><input type="number" value={borrador.gastos?.[k] || ''} onChange={e => upG(k, e.target.value)} /></div>
+          ))}
+        </div>
+      </Sec>
+      <Sec titulo="Patrimonio">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '11px' }}>
+          <div><Etiqueta>Ahorro / Fondo emergencia</Etiqueta><input type="number" value={borrador.ahorro || ''} onChange={e => up('ahorro', e.target.value)} /></div>
+          <div><Etiqueta>Deuda total</Etiqueta><input type="number" value={borrador.deuda || ''} onChange={e => up('deuda', e.target.value)} /></div>
+        </div>
+      </Sec>
+      <Sec titulo="API Asesor IA (Anthropic)">
+        <Etiqueta>API Key — requerida para el Asesor IA</Etiqueta>
+        <input type="password" placeholder="sk-ant-api03-..." value={borrador.apiKey || ''} onChange={e => up('apiKey', e.target.value)} />
+        <div style={{ fontSize: '11px', color: C.dim, marginTop: '6px', lineHeight: '1.6' }}>
+          Tu clave se guarda en Firebase bajo tu cuenta. Obtenla en <span style={{ color: C.info }}>console.anthropic.com</span>.
+        </div>
+      </Sec>
+    </div>
+  );
+}
+
+/* ═══════════════════════════ APP PRINCIPAL ═══════════════════════════ */
+function App() {
+  const [fase, setFase] = useState('cargando');
+  const [paso, setPaso] = useState(0);
+  const [activo, setActivo] = useState('panel');
+  const [perfil, setPerfil] = useState({
+    nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP',
+    ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '',
+    gastos: { arriendo: '', alimentacion: '', transporte: '', electricidad: '', agua: '', gas: '', internet: '', telefono: '', seguro: '', otros: '' },
+    metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5, apiKey: '',
+  });
+  const [txns, setTxns] = useState([]);
+  const [metas, setMetas] = useState([]);
+  const [proyectos, setProyectos] = useState([]);
+  const [chatMsgs, setChatMsgs] = useState([]);
+
+  // Esperar a que Firebase esté listo y detectar sesión
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (typeof window.onAuthStateChanged === 'function' && window.auth) {
+        const unsub = window.onAuthStateChanged(window.auth, async (user) => {
+          if (user) {
+            // Cargar perfil guardado
+            try {
+              const data = await window.cargarPerfil(user.uid);
+              if (data?.perfil && data?.perfilCompletado) {
+                setPerfil(prev => ({ ...prev, ...data.perfil }));
+                setFase('app');
+              } else {
+                setFase('onboarding');
+              }
+            } catch (e) {
+              setFase('onboarding');
+            }
+          } else {
+            setFase('auth');
+          }
+        });
+        return () => unsub();
+      } else {
+        setFase('auth');
+      }
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Escuchar transacciones/metas/proyectos en tiempo real cuando hay usuario
+  useEffect(() => {
+    const uid = window.currentUser?.uid;
+    if (!uid || fase !== 'app') return;
+    const unsubs = [];
+    if (window.escucharTransacciones) unsubs.push(window.escucharTransacciones(uid, setTxns));
+    if (window.escucharMetas) unsubs.push(window.escucharMetas(uid, setMetas));
+    if (window.escucharProyectos) unsubs.push(window.escucharProyectos(uid, setProyectos));
+    return () => unsubs.forEach(u => u && u());
+  }, [fase]);
+
+  const completar = async () => {
+    const uid = window.currentUser?.uid;
+    if (uid && window.guardarPerfil) {
+      try { await window.guardarPerfil(uid, perfil); } catch (e) { console.warn(e); }
+    }
+    setChatMsgs([{ rol: 'asistente', contenido: `¡Hola ${perfil.nombre || 'Usuario'}! 👋 Soy FARO, tu asesor financiero personal. Tengo tu perfil completo y estoy listo para ayudarte. ¿Por dónde empezamos?` }]);
+    setFase('app');
+  };
+
+  const cerrarSesion = async () => {
+    await window.cerrarSesion();
+    setFase('auth');
+    setTxns([]); setMetas([]); setProyectos([]); setChatMsgs([]);
+    setPerfil({ nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP', ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '', gastos: {}, metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5, apiKey: '' });
+  };
+
+  const puntaje = calcPuntaje(perfil, txns);
+
+  // Pantalla de carga
+  if (fase === 'cargando') {
+    return (
+      <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontFamily: 'Fraunces', fontSize: '48px', fontWeight: 700, color: C.accent, letterSpacing: '-2px', marginBottom: '12px' }}>FARO</div>
+          <div style={{ fontSize: '13px', color: C.muted }}>Iniciando...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (fase === 'auth') return <PantallaAuth onSuccess={() => setFase('onboarding')} />;
+  if (fase === 'onboarding') return <Onboarding paso={paso} setPaso={setPaso} perfil={perfil} setP={setPerfil} onCompleto={completar} />;
+
+  const pantallas = {
+    panel: <Panel perfil={perfil} txns={txns} puntaje={puntaje} setActivo={setActivo} />,
+    transacciones: <Transacciones txns={txns} setTxns={setTxns} perfil={perfil} />,
+    asesor: <AsesorIA perfil={perfil} txns={txns} puntaje={puntaje} msgs={chatMsgs} setMsgs={setChatMsgs} />,
+    metas: <Metas metas={metas} setMetas={setMetas} perfil={perfil} />,
+    proyectos: <ProyectosFinancieros perfil={perfil} proyectos={proyectos} setProyectos={setProyectos} />,
+    financiamiento: <ComoFinanciarme perfil={perfil} />,
+    impuestos: <MisImpuestos perfil={perfil} />,
+    integraciones: <Integraciones />,
+    configuracion: <Configuracion perfil={perfil} setPerfil={setPerfil} />,
+  };
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: C.bg, color: C.text }}>
+      <BarraLateral activo={activo} setActivo={setActivo} perfil={perfil} puntaje={puntaje} onCerrarSesion={cerrarSesion} />
+      <main style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>{pantallas[activo]}</main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+
+<!-- Service Worker para PWA -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('✅ PWA Service Worker registrado. Scope:', reg.scope))
+        .catch(err => console.error('❌ Error SW:', err));
+    });
+  }
+</script>
+</body>
+</html>
