@@ -102,6 +102,10 @@ button{cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all 
     await setDoc(doc(db, "usuarios", uid), { perfil, perfilCompletado: true }, { merge: true });
   };
 
+  window.guardarPatrimonio = async (uid, patrimonio) => {
+    await setDoc(doc(db, "usuarios", uid, "patrimonio", "resumen"), patrimonio, { merge: true });
+  };
+
   window.cargarPerfil = async (uid) => {
     const snap = await getDoc(doc(db, "usuarios", uid));
     return snap.exists() ? snap.data() : null;
@@ -453,37 +457,114 @@ function PantallaAuth({ onSuccess }) {
   );
 }
 
+/* ═══════════════════════════ HELPER LISTA ═══════════════════════════ */
+function ItemLista({ items, onChange, campos, labelAgregar }) {
+  items = items || [];
+  labelAgregar = labelAgregar || '+';
+  const empty = campos.reduce((a, c) => ({ ...a, [c.key]: '' }), {});
+  const [form, setForm] = React.useState(empty);
+  const agregar = () => {
+    const valido = campos.filter(c => c.required).every(c => (form[c.key]||'').trim());
+    if (!valido) return;
+    onChange([...items, { ...form, _id: Date.now() }]);
+    setForm(empty);
+  };
+  const quitar = id => onChange(items.filter(i => i._id !== id));
+  const cols = campos.map(() => '1fr').join(' ') + ' auto';
+  return (
+    <div>
+      {items.map(item => (
+        <div key={item._id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '9px 12px', background: C.surface, borderRadius: '8px', marginBottom: '6px', border: `1px solid ${C.border}`, fontSize: '13px', flexWrap: 'wrap' }}>
+          {campos.map(c => (
+            <span key={c.key} style={{ flex: 1, color: C.text, minWidth: '80px' }}>
+              {c.label && <span style={{ color: C.muted, fontSize: '11px', marginRight: '3px' }}>{c.label}:</span>}
+              {c.type === 'number' ? (+item[c.key]||0).toLocaleString('es-CL') : item[c.key]}
+            </span>
+          ))}
+          <button onClick={() => quitar(item._id)} style={{ background: 'none', border: 'none', color: C.danger, cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+        </div>
+      ))}
+      <div style={{ display: 'grid', gridTemplateColumns: cols, gap: '8px', marginTop: '4px' }}>
+        {campos.map(c => (
+          <input key={c.key} type={c.type === 'number' ? 'number' : 'text'} placeholder={c.placeholder || c.key}
+            value={form[c.key]} onChange={e => setForm(f => ({ ...f, [c.key]: e.target.value }))} style={{ fontSize: '13px' }} />
+        ))}
+        <button onClick={agregar} style={{ padding: '8px 14px', background: C.accent, color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', whiteSpace: 'nowrap' }}>{labelAgregar}</button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════ ONBOARDING ═══════════════════════════ */
 function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
   const up = (f, v) => setP(p => ({ ...p, [f]: v }));
   const upG = (f, v) => setP(p => ({ ...p, gastos: { ...p.gastos, [f]: v } }));
-  const puedeAvanzar = [!!perfil.nombre.trim(), !!perfil.ingreso && +perfil.ingreso > 0, true, true, true][paso];
-  const pasos = ['Datos personales', 'Tus ingresos', 'Gastos mensuales', 'Tus metas', 'Situación actual'];
+  const upA = (cat, val) => setP(p => ({ ...p, activos: { ...(p.activos||{}), [cat]: val } }));
+  const upPas = (cat, val) => setP(p => ({ ...p, pasivos: { ...(p.pasivos||{}), [cat]: val } }));
+  const upHip = (f, v) => setP(p => ({ ...p, pasivos: { ...(p.pasivos||{}), creditoHipotecario: { ...(p.pasivos?.creditoHipotecario||{}), [f]: v } } }));
+
+  const pasos = ['Inicio', 'Datos personales', 'Ingresos', 'Gastos', 'Activos', 'Pasivos', 'Metas', 'Preferencias'];
+  const puedeAvanzar = [true, !!perfil.nombre?.trim(), !!perfil.ingreso && +perfil.ingreso > 0, true, true, true, true, true][paso];
+
+  const act = perfil.activos || {};
+  const pas = perfil.pasivos || {};
+  const sumArr = (arr, key) => (arr||[]).reduce((s, i) => s + (+(i[key]||0)), 0);
+  const totalActivos = sumArr(act.cuentasCorrientes,'saldo') + sumArr(act.depositosPlazo,'monto') + sumArr(act.fondosInversion,'monto') + sumArr(act.inmuebles,'valorEstimado') + sumArr(act.vehiculos,'valorEstimado') + sumArr(act.otros,'monto');
+  const totalPasivos = sumArr(pas.tarjetas,'deudaActual') + sumArr(pas.creditosConsumo,'saldoDeuda') + sumArr(pas.deudasEducativas,'saldoDeuda') + sumArr(pas.deudasInformales,'monto') + (+(pas.creditoHipotecario?.saldoDeuda||0));
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
       <div style={{ position: 'fixed', top: '-100px', right: '-100px', width: '400px', height: '400px', background: `radial-gradient(circle,${C.accentDim} 0%,transparent 70%)`, pointerEvents: 'none' }} />
-      <div style={{ width: '100%', maxWidth: '540px', position: 'relative', zIndex: 1 }}>
-        <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+      <div style={{ width: '100%', maxWidth: '580px', position: 'relative', zIndex: 1 }}>
+        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ fontFamily: 'Fraunces', fontSize: '42px', fontWeight: 700, color: C.accent, letterSpacing: '-2px' }}>FARO</div>
           <div style={{ fontSize: '11px', color: C.muted, letterSpacing: '4px', textTransform: 'uppercase', marginTop: '3px' }}>Co-Piloto Financiero</div>
         </div>
-        <div style={{ display: 'flex', gap: '5px', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
           {pasos.map((_, i) => <div key={i} style={{ flex: 1, height: '3px', borderRadius: '2px', background: i <= paso ? C.accent : C.border, transition: 'background 0.4s' }} />)}
         </div>
-        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '28px' }}>Paso {paso + 1} de {pasos.length} — {pasos[paso]}</div>
+        <div style={{ fontSize: '12px', color: C.muted, marginBottom: '20px' }}>Paso {paso + 1} de {pasos.length} — {pasos[paso]}</div>
 
         <Tarjeta style={{ padding: '32px' }}>
+
           {paso === 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Bienvenido a FARO</div>
-              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '12px', lineHeight: '1.7' }}>Construyamos tu perfil financiero para darte asesoría realmente personalizada — no consejos genéricos.</div>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Bienvenido a FARO 👋</div>
+              <div style={{ color: C.muted, fontSize: '14px', lineHeight: '1.7' }}>Vamos a construir tu perfil financiero completo. Mientras más información tengas, más personalizada será tu asesoría.</div>
+              <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: '12px', padding: '20px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '14px' }}>📋 Ten esto a mano antes de empezar:</div>
+                {[
+                  ['💰','Ingresos','Sueldo líquido, honorarios, arriendos y otros ingresos mensuales'],
+                  ['🏦','Cuentas bancarias','Saldo actual de cuenta corriente, cuentas de ahorro (BancoEstado, etc.)'],
+                  ['📈','Inversiones','Saldo en Fintual, Racional, BTG, APV, fondos mutuos, acciones'],
+                  ['🏠','Propiedades y vehículos','Valor estimado de inmuebles y autos que tengas'],
+                  ['💳','Deudas','Saldo de tarjetas, hipoteca, créditos de consumo y deudas de estudio'],
+                  ['📄','Cartola bancaria','Excel o PDF de tu último estado de cuenta (opcional, puedes subirlo después)'],
+                ].map(([icon,title,desc]) => (
+                  <div key={title} style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '20px', flexShrink: 0 }}>{icon}</span>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 500 }}>{title}</div>
+                      <div style={{ fontSize: '12px', color: C.muted, lineHeight: '1.5' }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: '12px 16px', background: C.accentDim, borderRadius: '8px', fontSize: '12px', color: C.muted, lineHeight: '1.6' }}>
+                ✨ <strong>Todo es opcional</strong> — completa lo que tengas ahora y edita tu perfil después. Este proceso se hace <strong>una sola vez</strong>.
+              </div>
+            </div>
+          )}
+
+          {paso === 1 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Datos Personales</div>
               <div><Etiqueta>Nombre completo *</Etiqueta><input placeholder="Ana García" value={perfil.nombre} onChange={e => up('nombre', e.target.value)} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div><Etiqueta>Edad</Etiqueta><input type="number" placeholder="30" value={perfil.edad || ''} onChange={e => up('edad', e.target.value)} min="18" /></div>
                 <div><Etiqueta>País</Etiqueta>
                   <select value={perfil.pais} onChange={e => up('pais', e.target.value)}>
-                    {['Chile', 'Colombia', 'México', 'Perú', 'Argentina', 'Brasil', 'España', 'Otro'].map(c => <option key={c}>{c}</option>)}
+                    {['Chile','Colombia','México','Perú','Argentina','Brasil','España','Otro'].map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
@@ -506,21 +587,19 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
             </div>
           )}
 
-          {paso === 1 && (
+          {paso === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Tus Ingresos</div>
-              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '12px' }}>Ingresa tu sueldo líquido (después de impuestos y descuentos).</div>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Tus Ingresos</div>
+              <div style={{ color: C.muted, fontSize: '14px' }}>Ingresa tu sueldo líquido (después de impuestos y descuentos).</div>
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
-                <div><Etiqueta>Ingreso mensual líquido *</Etiqueta><input type="number" placeholder="1500" value={perfil.ingreso} onChange={e => up('ingreso', e.target.value)} /></div>
+                <div><Etiqueta>Ingreso mensual líquido *</Etiqueta><input type="number" placeholder="1500000" value={perfil.ingreso} onChange={e => up('ingreso', e.target.value)} /></div>
                 <div><Etiqueta>Moneda</Etiqueta>
                   <select value={perfil.moneda} onChange={e => up('moneda', e.target.value)}>
-                    {['CLP', 'USD', 'COP', 'MXN', 'PEN', 'ARS', 'EUR', 'BRL'].map(c => <option key={c}>{c}</option>)}
+                    {['CLP','USD','COP','MXN','PEN','ARS','EUR','BRL'].map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
               </div>
-              <div><Etiqueta>Ingresos adicionales / variables</Etiqueta>
-                <input type="number" placeholder="0" value={perfil.ingresoAdicional || ''} onChange={e => up('ingresoAdicional', e.target.value)} />
-              </div>
+              <div><Etiqueta>Ingresos adicionales / variables</Etiqueta><input type="number" placeholder="0" value={perfil.ingresoAdicional || ''} onChange={e => up('ingresoAdicional', e.target.value)} /></div>
               <div><Etiqueta>Frecuencia de pago</Etiqueta>
                 <select value={perfil.frecuencia || 'mensual'} onChange={e => up('frecuencia', e.target.value)}>
                   <option value="mensual">Mensual</option><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option><option value="irregular">Irregular</option>
@@ -529,14 +608,11 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
             </div>
           )}
 
-          {paso === 2 && (
+          {paso === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
-              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Gastos Mensuales Fijos</div>
-              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '10px' }}>Todo en {perfil.moneda || 'USD'}. Deja en 0 lo que no aplique.</div>
-              {[['arriendo', '🏠 Arriendo / Dividendo'], ['alimentacion', '🛒 Alimentación y hogar'], ['transporte', '🚗 Transporte'],
-              ['electricidad', '⚡ Electricidad'], ['agua', '💧 Agua'], ['gas', '🔥 Gas / Calefacción'],
-              ['internet', '📡 Internet'], ['telefono', '📱 Teléfono / Celular'],
-              ['seguro', '🛡️ Seguros'], ['otros', '📋 Otros gastos fijos']].map(([k, l]) => (
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Gastos Mensuales Fijos</div>
+              <div style={{ color: C.muted, fontSize: '14px' }}>Todo en {perfil.moneda || 'CLP'}. Deja en 0 lo que no aplique.</div>
+              {[['arriendo','🏠 Arriendo / Dividendo'],['alimentacion','🛒 Alimentación y hogar'],['transporte','🚗 Transporte'],['electricidad','⚡ Electricidad'],['agua','💧 Agua'],['gas','🔥 Gas / Calefacción'],['internet','📡 Internet'],['telefono','📱 Teléfono / Celular'],['seguro','🛡️ Seguros'],['otros','📋 Otros gastos fijos']].map(([k,l]) => (
                 <div key={k} style={{ display: 'grid', gridTemplateColumns: '1fr 150px', alignItems: 'center', gap: '12px' }}>
                   <div style={{ fontSize: '13px', color: C.muted }}>{l}</div>
                   <input type="number" placeholder="0" value={perfil.gastos?.[k] || ''} onChange={e => upG(k, e.target.value)} style={{ textAlign: 'right' }} />
@@ -545,7 +621,93 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
             </div>
           )}
 
-          {paso === 3 && (
+          {paso === 4 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div>
+                <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Tus Activos</div>
+                <div style={{ color: C.muted, fontSize: '13px', marginTop: '4px' }}>Todo es opcional. Completa lo que tengas a mano.</div>
+              </div>
+              {totalActivos > 0 && (
+                <div style={{ padding: '10px 14px', background: C.accentDim, borderRadius: '8px', fontSize: '13px', color: C.accent, fontWeight: 600 }}>
+                  ✅ Total activos: ${totalActivos.toLocaleString('es-CL')} {perfil.moneda}
+                </div>
+              )}
+              <div>
+                <Etiqueta>🏦 Cuentas corrientes y de ahorro</Etiqueta>
+                <ItemLista items={act.cuentasCorrientes} onChange={v => upA('cuentasCorrientes', v)}
+                  campos={[{key:'banco',placeholder:'Banco (ej: BCI)',required:true},{key:'saldo',placeholder:'Saldo actual',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>📅 Depósitos a plazo</Etiqueta>
+                <ItemLista items={act.depositosPlazo} onChange={v => upA('depositosPlazo', v)}
+                  campos={[{key:'banco',placeholder:'Banco',required:true},{key:'monto',placeholder:'Monto',type:'number'},{key:'vencimiento',placeholder:'Vencimiento'}]} />
+              </div>
+              <div>
+                <Etiqueta>📈 Fondos de inversión (Fintual, Racional, BTG, APV, fondos mutuos)</Etiqueta>
+                <ItemLista items={act.fondosInversion} onChange={v => upA('fondosInversion', v)}
+                  campos={[{key:'plataforma',placeholder:'Plataforma',required:true},{key:'nombre',placeholder:'Fondo / Portfolio'},{key:'monto',placeholder:'Valor actual',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>🏠 Propiedades / Inmuebles</Etiqueta>
+                <ItemLista items={act.inmuebles} onChange={v => upA('inmuebles', v)}
+                  campos={[{key:'descripcion',placeholder:'Descripción (ej: Depto Las Condes)',required:true},{key:'valorEstimado',placeholder:'Valor estimado',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>🚗 Vehículos</Etiqueta>
+                <ItemLista items={act.vehiculos} onChange={v => upA('vehiculos', v)}
+                  campos={[{key:'descripcion',placeholder:'Descripción (ej: Auto 2020)',required:true},{key:'valorEstimado',placeholder:'Valor estimado',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>💼 Otros activos</Etiqueta>
+                <ItemLista items={act.otros} onChange={v => upA('otros', v)}
+                  campos={[{key:'descripcion',placeholder:'Descripción',required:true},{key:'monto',placeholder:'Valor',type:'number'}]} />
+              </div>
+            </div>
+          )}
+
+          {paso === 5 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div>
+                <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Tus Pasivos</div>
+                <div style={{ color: C.muted, fontSize: '13px', marginTop: '4px' }}>Registra tus deudas para calcular tu patrimonio neto real.</div>
+              </div>
+              {totalPasivos > 0 && (
+                <div style={{ padding: '10px 14px', background: 'rgba(255,107,107,0.08)', border: '1px solid rgba(255,107,107,0.2)', borderRadius: '8px', fontSize: '13px', color: C.danger, fontWeight: 600 }}>
+                  ⚠️ Total pasivos: ${totalPasivos.toLocaleString('es-CL')} {perfil.moneda}
+                </div>
+              )}
+              <div>
+                <Etiqueta>💳 Tarjetas de crédito</Etiqueta>
+                <ItemLista items={pas.tarjetas} onChange={v => upPas('tarjetas', v)}
+                  campos={[{key:'banco',placeholder:'Banco',required:true},{key:'nombre',placeholder:'Nombre tarjeta'},{key:'deudaActual',placeholder:'Deuda actual',type:'number'},{key:'tasaMensual',placeholder:'Tasa % mensual',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>🏗️ Crédito hipotecario</Etiqueta>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <input placeholder="Banco" value={pas.creditoHipotecario?.banco || ''} onChange={e => upHip('banco', e.target.value)} />
+                  <input type="number" placeholder="Saldo deuda" value={pas.creditoHipotecario?.saldoDeuda || ''} onChange={e => upHip('saldoDeuda', e.target.value)} />
+                  <input type="number" placeholder="Cuota mensual" value={pas.creditoHipotecario?.cuotaMensual || ''} onChange={e => upHip('cuotaMensual', e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <Etiqueta>🏦 Créditos de consumo</Etiqueta>
+                <ItemLista items={pas.creditosConsumo} onChange={v => upPas('creditosConsumo', v)}
+                  campos={[{key:'banco',placeholder:'Banco / Institución',required:true},{key:'saldoDeuda',placeholder:'Saldo deuda',type:'number'},{key:'cuotaMensual',placeholder:'Cuota mensual',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>📚 Deudas educativas (CAE, crédito universitario)</Etiqueta>
+                <ItemLista items={pas.deudasEducativas} onChange={v => upPas('deudasEducativas', v)}
+                  campos={[{key:'institucion',placeholder:'Institución',required:true},{key:'saldoDeuda',placeholder:'Saldo deuda',type:'number'},{key:'cuotaMensual',placeholder:'Cuota mensual',type:'number'}]} />
+              </div>
+              <div>
+                <Etiqueta>🤝 Deudas informales</Etiqueta>
+                <ItemLista items={pas.deudasInformales} onChange={v => upPas('deudasInformales', v)}
+                  campos={[{key:'descripcion',placeholder:'Descripción',required:true},{key:'monto',placeholder:'Monto',type:'number'}]} />
+              </div>
+            </div>
+          )}
+
+          {paso === 6 && (
             <div>
               <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '6px' }}>Tus Metas Financieras</div>
               <div style={{ color: C.muted, fontSize: '14px', marginBottom: '20px' }}>Selecciona las que apliquen. Puedes ajustarlas después.</div>
@@ -553,14 +715,8 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
                 {METAS_OPT.map(g => {
                   const sel = (perfil.metas || []).includes(g.id);
                   return (
-                    <div key={g.id} onClick={() => {
-                      const gs = perfil.metas || [];
-                      up('metas', sel ? gs.filter(x => x !== g.id) : [...gs, g.id]);
-                    }} style={{
-                      padding: '13px', borderRadius: '10px', cursor: 'pointer',
-                      border: `1px solid ${sel ? g.color : C.border}`, background: sel ? `${g.color}15` : C.surface,
-                      display: 'flex', alignItems: 'center', gap: '10px', transition: 'all 0.2s'
-                    }}>
+                    <div key={g.id} onClick={() => { const gs = perfil.metas||[]; up('metas', sel ? gs.filter(x => x!==g.id) : [...gs, g.id]); }}
+                      style={{ padding: '13px', borderRadius: '10px', cursor: 'pointer', border: `1px solid ${sel ? g.color : C.border}`, background: sel ? `${g.color}15` : C.surface, display: 'flex', alignItems: 'center', gap: '10px', transition: 'all 0.2s' }}>
                       <span style={{ fontSize: '20px' }}>{g.icon}</span>
                       <span style={{ fontSize: '13px', fontWeight: sel ? 500 : 400, color: sel ? g.color : C.text }}>{g.label}</span>
                     </div>
@@ -570,30 +726,31 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
             </div>
           )}
 
-          {paso === 4 && (
+          {paso === 7 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600, marginBottom: '4px' }}>Situación Actual</div>
-              <div style={{ color: C.muted, fontSize: '14px', marginBottom: '8px' }}>Último paso — esto calibra tu asesoría.</div>
-              <div><Etiqueta>Ahorro / Fondo de emergencia actual ({perfil.moneda || 'USD'})</Etiqueta>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Situación y Preferencias</div>
+              <div style={{ color: C.muted, fontSize: '14px' }}>Último paso — esto calibra tu asesoría.</div>
+              <div><Etiqueta>Ahorro / Fondo de emergencia actual ({perfil.moneda || 'CLP'})</Etiqueta>
                 <input type="number" placeholder="0" value={perfil.ahorro || ''} onChange={e => up('ahorro', e.target.value)} />
-              </div>
-              <div><Etiqueta>Deuda total ({perfil.moneda || 'USD'})</Etiqueta>
-                <input type="number" placeholder="0" value={perfil.deuda || ''} onChange={e => up('deuda', e.target.value)} />
               </div>
               <div>
                 <Etiqueta>Tolerancia al riesgo: <span style={{ color: C.accent, fontWeight: 600 }}>{perfil.toleranciaRiesgo}/10</span> — {perfil.toleranciaRiesgo <= 3 ? 'Conservador' : perfil.toleranciaRiesgo <= 6 ? 'Moderado' : 'Agresivo'}</Etiqueta>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                    <div key={n} onClick={() => up('toleranciaRiesgo', n)} style={{
-                      width: '36px', height: '36px', borderRadius: '8px', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 500,
-                      background: n <= perfil.toleranciaRiesgo ? C.accent : C.surface,
-                      color: n <= perfil.toleranciaRiesgo ? '#FFFFFF' : C.muted,
-                      border: `1px solid ${n <= perfil.toleranciaRiesgo ? C.accent : C.border}`
-                    }}>{n}</div>
+                  {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                    <div key={n} onClick={() => up('toleranciaRiesgo', n)} style={{ width: '36px', height: '36px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '13px', fontWeight: 500, background: n <= perfil.toleranciaRiesgo ? C.accent : C.surface, color: n <= perfil.toleranciaRiesgo ? '#FFFFFF' : C.muted, border: `1px solid ${n <= perfil.toleranciaRiesgo ? C.accent : C.border}` }}>{n}</div>
                   ))}
                 </div>
               </div>
+              {(totalActivos > 0 || totalPasivos > 0) && (
+                <div style={{ padding: '16px', background: C.surface, borderRadius: '10px', border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>Resumen de tu patrimonio</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', textAlign: 'center' }}>
+                    {[['Activos', totalActivos, C.success],['Pasivos', totalPasivos, C.danger],['Net Worth', totalActivos-totalPasivos, totalActivos-totalPasivos >= 0 ? C.accent : C.danger]].map(([l,v,c]) => (
+                      <div key={l}><div style={{ fontSize: '11px', color: C.muted }}>{l}</div><div style={{ fontSize: '16px', fontWeight: 700, color: c, fontFamily: 'Fraunces' }}>${v.toLocaleString('es-CL')}</div></div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div style={{ padding: '13px', background: C.accentDim, border: `1px solid ${C.accent}25`, borderRadius: '10px', fontSize: '12px', color: C.muted, lineHeight: '1.6' }}>
                 🔒 Tus datos financieros se guardan en Firebase bajo tu cuenta. Solo tú tienes acceso.
               </div>
@@ -602,8 +759,8 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '28px' }}>
             {paso > 0 ? <Btn variant="outline" onClick={() => setPaso(s => s - 1)}>← Atrás</Btn> : <div />}
-            <Btn onClick={paso < 4 ? () => setPaso(s => s + 1) : onCompleto} disabled={!puedeAvanzar}>
-              {paso < 4 ? 'Continuar →' : 'Lanzar FARO 🚀'}
+            <Btn onClick={paso < 7 ? () => { if (puedeAvanzar) setPaso(s => s + 1); } : onCompleto} disabled={!puedeAvanzar}>
+              {paso < 7 ? 'Continuar →' : 'Lanzar FARO 🚀'}
             </Btn>
           </div>
         </Tarjeta>
@@ -716,6 +873,37 @@ function Panel({ perfil, txns, puntaje, setActivo }) {
         ))}
       </div>
 
+      {(() => {
+        const act = perfil.activos || {};
+        const pas = perfil.pasivos || {};
+        const sumA = (arr, k) => (arr||[]).reduce((s,i) => s+(+(i[k]||0)), 0);
+        const totalA = sumA(act.cuentasCorrientes,'saldo') + sumA(act.depositosPlazo,'monto') + sumA(act.fondosInversion,'monto') + sumA(act.inmuebles,'valorEstimado') + sumA(act.vehiculos,'valorEstimado') + sumA(act.otros,'monto');
+        const totalP = sumA(pas.tarjetas,'deudaActual') + sumA(pas.creditosConsumo,'saldoDeuda') + sumA(pas.deudasEducativas,'saldoDeuda') + sumA(pas.deudasInformales,'monto') + (+(pas.creditoHipotecario?.saldoDeuda||0));
+        if (totalA === 0 && totalP === 0) return null;
+        const nw = totalA - totalP;
+        return (
+          <Tarjeta style={{ marginBottom: '16px', background: nw >= 0 ? `linear-gradient(135deg, ${C.card} 0%, ${C.accentDim} 100%)` : C.card }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>Patrimonio Neto (Net Worth)</div>
+                <div style={{ fontFamily: 'Fraunces', fontSize: '36px', fontWeight: 700, color: nw >= 0 ? C.accent : C.danger }}>{fmt(Math.abs(nw), cur)}</div>
+                <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>{nw >= 0 ? '✅ Balance positivo' : '⚠️ Pasivos superan activos'}</div>
+              </div>
+              <div style={{ display: 'flex', gap: '24px' }}>
+                {[['Activos', totalA, C.success],['Pasivos', totalP, C.danger],['Cobertura', null, totalP > 0 ? (totalA/totalP >= 2 ? C.success : C.warning) : C.success]].map(([l,v,c]) => (
+                  <div key={l} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '11px', color: C.muted, marginBottom: '4px' }}>{l}</div>
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: c, fontFamily: 'Fraunces' }}>
+                      {l === 'Cobertura' ? (totalP > 0 ? `${(totalA/totalP).toFixed(1)}x` : '∞') : fmt(v, cur)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Tarjeta>
+        );
+      })()}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
         <Tarjeta>
           <div style={{ fontSize: '14px', fontWeight: 500, marginBottom: '16px' }}>Principales Gastos — {meses[mo]}</div>
@@ -810,6 +998,36 @@ function Panel({ perfil, txns, puntaje, setActivo }) {
 /* ═══════════════════════════ TRANSACCIONES ═══════════════════════════ */
 function Transacciones({ txns, setTxns, perfil }) {
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [mostrarCartola, setMostrarCartola] = useState(false);
+  const [bancoSel, setBancoSel] = useState('bci');
+  const [archivo, setArchivo] = useState(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [resultadoCartola, setResultadoCartola] = useState(null);
+
+  const subirCartola = async () => {
+    if (!archivo || !window.currentUser) return;
+    setSubiendo(true); setResultadoCartola(null);
+    try {
+      const idToken = await window.currentUser.getIdToken();
+      const fd = new FormData();
+      fd.append('archivo', archivo);
+      fd.append('banco', bancoSel);
+      fd.append('idToken', idToken);
+      const res = await fetch('/api/procesarCartola', { method: 'POST', headers: { 'Authorization': `Bearer ${idToken}` }, body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al procesar');
+      const uid = window.currentUser.uid;
+      let importadas = 0;
+      for (const tx of (data.transacciones || [])) {
+        try { await window.guardarTransaccion(uid, tx); importadas++; } catch {}
+      }
+      setResultadoCartola({ ok: true, total: data.transacciones?.length || 0, importadas });
+      setArchivo(null);
+    } catch (err) {
+      setResultadoCartola({ ok: false, error: err.message });
+    } finally { setSubiendo(false); }
+  };
+
   const [filtro, setFiltro] = useState('todos');
   const [form, setForm] = useState({ tipo: 'gasto', monto: '', categoria: '', desc: '', fecha: new Date().toISOString().split('T')[0] });
   const [guardando, setGuardando] = useState(false);
@@ -851,7 +1069,10 @@ function Transacciones({ txns, setTxns, perfil }) {
           <div style={{ fontFamily: 'Fraunces', fontSize: '26px', fontWeight: 600 }}>Transacciones</div>
           <div style={{ color: C.muted, fontSize: '14px', marginTop: '4px' }}>{txns.length} registros · <span style={{ color: C.success }}>+{fmt(totIng, cur)}</span> · <span style={{ color: C.danger }}>−{fmt(totGas, cur)}</span></div>
         </div>
-        <Btn onClick={() => setMostrarForm(true)}>+ Agregar</Btn>
+        <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setMostrarCartola(true)} style={{ padding: '9px 16px', borderRadius: '8px', border: `1px solid ${C.border}`, background: C.surface, color: C.muted, fontSize: '13px', cursor: 'pointer' }}>📄 Subir cartola</button>
+            <button onClick={() => setMostrarForm(true)} style={{ padding: '9px 18px', borderRadius: '8px', border: 'none', background: C.accent, color: '#fff', fontSize: '13px', fontWeight: 500, cursor: 'pointer' }}>+ Agregar</button>
+          </div>
       </div>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '18px' }}>
         {[['todos', 'Todos'], ['ingreso', 'Ingresos'], ['gasto', 'Gastos']].map(([f, l]) => (
@@ -904,6 +1125,52 @@ function Transacciones({ txns, setTxns, perfil }) {
                 <Btn variant="outline" onClick={() => setMostrarForm(false)} style={{ flex: 1 }}>Cancelar</Btn>
               </div>
             </div>
+          </Tarjeta>
+        </div>
+      )}
+
+      {mostrarCartola && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999, padding: '24px' }}>
+          <Tarjeta style={{ width: '100%', maxWidth: '480px', padding: '28px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ fontFamily: 'Fraunces', fontSize: '20px', fontWeight: 600 }}>Importar cartola</div>
+              <button onClick={() => { setMostrarCartola(false); setResultadoCartola(null); setArchivo(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: C.muted }}>×</button>
+            </div>
+            {!resultadoCartola ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <Etiqueta>Banco</Etiqueta>
+                  <select value={bancoSel} onChange={e => setBancoSel(e.target.value)}>
+                    {[['bci','BCI'],['bancochile','Banco de Chile'],['santander','Santander'],['bancoestado','BancoEstado'],['scotiabank','Scotiabank'],['itau','Itaú'],['falabella','Banco Falabella'],['otro','Otro']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Etiqueta>Archivo (Excel .xlsx o PDF)</Etiqueta>
+                  <input type="file" accept=".xlsx,.xls,.pdf" onChange={e => setArchivo(e.target.files[0])}
+                    style={{ padding: '8px', border: `1px solid ${C.border}`, borderRadius: '8px', width: '100%', background: C.surface, color: C.text, fontSize: '13px', boxSizing: 'border-box' }} />
+                  {archivo && <div style={{ fontSize: '12px', color: C.muted, marginTop: '4px' }}>📎 {archivo.name} ({(archivo.size/1024).toFixed(0)} KB)</div>}
+                </div>
+                <div style={{ padding: '12px', background: C.surface, borderRadius: '8px', fontSize: '12px', color: C.muted, lineHeight: '1.6' }}>
+                  💡 Descarga tu cartola desde la banca en línea de tu banco en formato Excel. FARO la procesará automáticamente e importará las transacciones.
+                </div>
+                <Btn onClick={subirCartola} disabled={!archivo || subiendo} full>
+                  {subiendo ? '⏳ Procesando cartola...' : 'Procesar e importar'}
+                </Btn>
+              </div>
+            ) : resultadoCartola.ok ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
+                <div style={{ fontFamily: 'Fraunces', fontSize: '22px', fontWeight: 600, marginBottom: '8px' }}>¡Cartola importada!</div>
+                <div style={{ color: C.muted, fontSize: '14px' }}>{resultadoCartola.importadas} de {resultadoCartola.total} transacciones importadas</div>
+                <Btn onClick={() => { setMostrarCartola(false); setResultadoCartola(null); }} style={{ marginTop: '20px' }}>Cerrar</Btn>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>❌</div>
+                <div style={{ color: C.danger, fontSize: '14px', marginBottom: '16px' }}>{resultadoCartola.error}</div>
+                <Btn variant="outline" onClick={() => setResultadoCartola(null)}>Intentar de nuevo</Btn>
+              </div>
+            )}
           </Tarjeta>
         </div>
       )}
@@ -1779,6 +2046,8 @@ function App() {
     ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '',
     gastos: { arriendo: '', alimentacion: '', transporte: '', electricidad: '', agua: '', gas: '', internet: '', telefono: '', seguro: '', otros: '' },
     metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5,
+    activos: { cuentasCorrientes: [], depositosPlazo: [], fondosInversion: [], inmuebles: [], vehiculos: [], otros: [] },
+    pasivos: { tarjetas: [], creditoHipotecario: null, creditosConsumo: [], deudasEducativas: [], deudasInformales: [] },
   });
   const [txns, setTxns] = useState([]);
   const [metas, setMetas] = useState([]);
@@ -1828,8 +2097,31 @@ function App() {
 
   const completar = async () => {
     const uid = window.currentUser?.uid;
-    if (uid && window.guardarPerfil) {
-      try { await window.guardarPerfil(uid, perfil); } catch (e) { console.warn(e); }
+    if (uid) {
+      try {
+        await window.guardarPerfil?.(uid, perfil);
+        const act = perfil.activos || {};
+        const pas = perfil.pasivos || {};
+        const totalCC = (act.cuentasCorrientes||[]).reduce((s,i) => s+(+i.saldo||0), 0);
+        const totalDP = (act.depositosPlazo||[]).reduce((s,i) => s+(+i.monto||0), 0);
+        const totalFI = (act.fondosInversion||[]).reduce((s,i) => s+(+i.monto||0), 0);
+        const totalInm = (act.inmuebles||[]).reduce((s,i) => s+(+i.valorEstimado||0), 0);
+        const totalVeh = (act.vehiculos||[]).reduce((s,i) => s+(+i.valorEstimado||0), 0);
+        const totalOtrosA = (act.otros||[]).reduce((s,i) => s+(+i.monto||0), 0);
+        const totalActivos = totalCC + totalDP + totalFI + totalInm + totalVeh + totalOtrosA;
+        const totalTarj = (pas.tarjetas||[]).reduce((s,i) => s+(+i.deudaActual||0), 0);
+        const totalHip = +(pas.creditoHipotecario?.saldoDeuda||0);
+        const totalCons = (pas.creditosConsumo||[]).reduce((s,i) => s+(+i.saldoDeuda||0), 0);
+        const totalEduc = (pas.deudasEducativas||[]).reduce((s,i) => s+(+i.saldoDeuda||0), 0);
+        const totalInf = (pas.deudasInformales||[]).reduce((s,i) => s+(+i.monto||0), 0);
+        const totalPasivos = totalTarj + totalHip + totalCons + totalEduc + totalInf;
+        const patrimonio = {
+          netWorth: totalActivos - totalPasivos, totalActivos, totalPasivos,
+          activos: { ...act, totales: { cuentasCorrientes: totalCC, depositosPlazo: totalDP, fondosInversion: totalFI, inmuebles: totalInm, vehiculos: totalVeh, otros: totalOtrosA } },
+          pasivos: { ...pas, totales: { tarjetas: totalTarj, hipotecario: totalHip, consumo: totalCons, educativo: totalEduc, informales: totalInf } },
+        };
+        await window.guardarPatrimonio?.(uid, patrimonio);
+      } catch (e) { console.warn(e); }
     }
     setChatMsgs([{ rol: 'asistente', contenido: `¡Hola ${perfil.nombre || 'Usuario'}! 👋 Soy FARO, tu asesor financiero personal. Tengo tu perfil completo y estoy listo para ayudarte. ¿Por dónde empezamos?` }]);
     setFase('app');
@@ -1839,7 +2131,7 @@ function App() {
     await window.cerrarSesion();
     setFase('auth');
     setTxns([]); setMetas([]); setProyectos([]); setChatMsgs([]);
-    setPerfil({ nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP', ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '', gastos: {}, metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5 });
+    setPerfil({ nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP', ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '', gastos: {}, metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5, activos: { cuentasCorrientes: [], depositosPlazo: [], fondosInversion: [], inmuebles: [], vehiculos: [], otros: [] }, pasivos: { tarjetas: [], creditoHipotecario: null, creditosConsumo: [], deudasEducativas: [], deudasInformales: [] } });
   };
 
   const puntaje = calcPuntaje(perfil, txns);
