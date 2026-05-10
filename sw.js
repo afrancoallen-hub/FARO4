@@ -3,7 +3,7 @@
    Estrategia: Cache-first para assets, Network-first para API
 ═══════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'faro-cache-v1';
+const CACHE_NAME = 'faro-cache-v2';
 const STATIC_ASSETS = [
   './index.html',
   'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap',
