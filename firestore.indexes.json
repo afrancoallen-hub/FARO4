@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "transacciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "creadoEn", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

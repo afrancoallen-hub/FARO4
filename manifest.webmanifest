@@ -2,7 +2,7 @@
   "name": "FARO — Tu Asesor Financiero",
   "short_name": "FARO",
   "description": "Co-piloto financiero personal para Latinoamérica",
-  "start_url": "./FARO-v2.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
@@ -28,12 +28,12 @@
   "shortcuts": [
     {
       "name": "Panel Principal",
-      "url": "./FARO-v2.html#panel",
+      "url": "./index.html#panel",
       "description": "Ver tu resumen financiero"
     },
     {
       "name": "Asesor IA",
-      "url": "./FARO-v2.html#asesor",
+      "url": "./index.html#asesor",
       "description": "Consultar al asesor de IA"
     }
   ]

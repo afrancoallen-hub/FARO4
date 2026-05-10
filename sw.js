@@ -5,7 +5,7 @@
 
 const CACHE_NAME = 'faro-cache-v1';
 const STATIC_ASSETS = [
-  './FARO-v2.html',
+  './index.html',
   'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap',
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
@@ -88,7 +88,7 @@ self.addEventListener('fetch', (event) => {
           .catch(() => {
             // Offline fallback para la app
             if (event.request.destination === 'document') {
-              return caches.match('./FARO-v2.html');
+              return caches.match('./index.html');
             }
             return new Response('Sin conexión', { status: 503, statusText: 'Service Unavailable' });
           });

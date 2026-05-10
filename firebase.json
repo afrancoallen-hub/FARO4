@@ -1,0 +1,30 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "functions/**"],
+    "rewrites": [
+      {
+        "source": "/api/asistente",
+        "run": {
+          "serviceId": "asistente",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/procesarCartola",
+        "run": {
+          "serviceId": "procesarcartola",
+          "region": "us-central1"
+        }
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  }
+}

@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function esElUsuario(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /usuarios/{uid} {
+      allow read, write: if esElUsuario(uid);
+
+      match /transacciones/{txId} {
+        allow read, write: if esElUsuario(uid);
+      }
+      match /metas/{metaId} {
+        allow read, write: if esElUsuario(uid);
+      }
+      match /patrimonio/{docId} {
+        allow read, write: if esElUsuario(uid);
+      }
+      match /proyectos/{proyId} {
+        allow read, write: if esElUsuario(uid);
+      }
+
+      // Solo el backend (Admin SDK) puede escribir estos documentos
+      match /suscripcion/{docId} {
+        allow read: if esElUsuario(uid);
+        allow write: if false;
+      }
+      match /uso_ia/{periodo} {
+        allow read: if esElUsuario(uid);
+        allow write: if false;
+      }
+    }
+
+    // Denegar todo lo demás
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -594,10 +594,6 @@ function Onboarding({ paso, setPaso, perfil, setP, onCompleto }) {
                   ))}
                 </div>
               </div>
-              <div><Etiqueta>API Key Anthropic — habilita el Asesor IA</Etiqueta>
-                <input type="password" placeholder="sk-ant-api03-..." value={perfil.apiKey || ''} onChange={e => up('apiKey', e.target.value)} />
-                <div style={{ fontSize: '11px', color: C.dim, marginTop: '5px', lineHeight: '1.6' }}>Tu clave se almacena solo en tu navegador. Obtén una en console.anthropic.com. Puedes agregarla después.</div>
-              </div>
               <div style={{ padding: '13px', background: C.accentDim, border: `1px solid ${C.accent}25`, borderRadius: '10px', fontSize: '12px', color: C.muted, lineHeight: '1.6' }}>
                 🔒 Tus datos financieros se guardan en Firebase bajo tu cuenta. Solo tú tienes acceso.
               </div>
@@ -925,41 +921,33 @@ function AsesorIA({ perfil, txns, puntaje, msgs, setMsgs }) {
   useEffect(() => finRef.current?.scrollIntoView({ behavior: 'smooth' }), [msgs]);
 
   const enviar = async () => {
-    if (!input.trim() || cargando || !perfil.apiKey) return;
+    if (!input.trim() || cargando) return;
     const msg = input.trim(); setInput('');
     setMsgs(p => [...p, { rol: 'usuario', contenido: msg }]);
     setCargando(true);
-    const now = new Date(), mo = now.getMonth();
-    const mGasto = txns.filter(t => t.tipo === 'gasto' && new Date(t.fecha).getMonth() === mo).reduce((s, t) => s + (+t.monto || 0), 0);
-    const ingreso = +perfil.ingreso || 0;
-
-    const sys = `Eres FARO — un asesor financiero de élite para Latinoamérica, brutalmente honesto y específico.
-
-PERFIL:
-- Nombre: ${perfil.nombre} | Edad: ${perfil.edad || 'N/D'} | País: ${perfil.pais}
-- Empleo: ${perfil.empleo} | Hijos: ${perfil.hijos || 0}
-- Ingreso mensual: ${cur} ${ingreso.toLocaleString()} | Gasto mes: ${cur} ${mGasto.toFixed(0)}
-- Flujo neto: ${cur} ${(ingreso - mGasto).toFixed(0)} | Ahorro: ${Math.round((ingreso - mGasto) / (ingreso || 1) * 100)}%
-- Ahorro acumulado: ${cur} ${perfil.ahorro || 0} | Deuda: ${cur} ${perfil.deuda || 0}
-- Riesgo: ${perfil.toleranciaRiesgo}/10 | Puntaje: ${puntaje}/100
-- Metas: ${(perfil.metas || []).join(', ') || 'Ninguna'}
-
-REGLAS: usa números reales, sé directo, máximo 200 palabras, responde en el idioma del usuario.
-${perfil.pais === 'Chile' ? 'CHILE: APV, Fintual, BancoEstado, SII, AFP, Operación Renta disponibles.' : ''}`;
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      if (!window.currentUser) throw new Error('Sin sesión activa');
+      const idToken = await window.currentUser.getIdToken();
+      const historial = msgs.slice(-8).map(m => ({
+        role: m.rol === 'usuario' ? 'user' : 'assistant',
+        content: m.contenido
+      }));
+      const res = await fetch('/api/asistente', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': perfil.apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: sys,
-          messages: [...msgs.slice(-8).map(m => ({ role: m.rol === 'usuario' ? 'user' : 'assistant', content: m.contenido })), { role: 'user', content: msg }]
-        })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({ mensaje: msg, historial, idToken })
       });
-      const data = await res.json();
-      const reply = data.content?.[0]?.text || (data.error?.message || 'Error. Verifica tu API Key en Configuración.');
-      setMsgs(p => [...p, { rol: 'asistente', contenido: reply }]);
-    } catch {
+      let data = {};
+      try { data = await res.json(); } catch { console.error('Respuesta no-JSON del servidor, status:', res.status); }
+      if (!res.ok) {
+        const errMsg = data.mensaje || (res.status === 403 ? 'Activa tu plan FARO para usar el Asesor IA.' : res.status === 404 ? 'Función no encontrada (revisa el deploy).' : 'Error al conectar con el asesor. Intenta nuevamente.');
+        setMsgs(p => [...p, { rol: 'asistente', contenido: errMsg }]);
+      } else {
+        setMsgs(p => [...p, { rol: 'asistente', contenido: data.respuesta }]);
+      }
+    } catch (err) {
+      console.error('Error en enviar():', err);
       setMsgs(p => [...p, { rol: 'asistente', contenido: 'Error de conexión. Intenta nuevamente.' }]);
     } finally {
       setCargando(false);
@@ -974,7 +962,6 @@ ${perfil.pais === 'Chile' ? 'CHILE: APV, Fintual, BancoEstado, SII, AFP, Operaci
         <div style={{ fontFamily: 'Fraunces', fontSize: '24px', fontWeight: 600 }}>Asesor IA</div>
         <div style={{ color: C.muted, fontSize: '13px', marginTop: '2px' }}>
           Asesoría personalizada basada en tu perfil real
-          {!perfil.apiKey && <span style={{ color: C.warning, marginLeft: '8px' }}>· Agrega API Key en Configuración para activar</span>}
         </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '18px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -1005,12 +992,11 @@ ${perfil.pais === 'Chile' ? 'CHILE: APV, Fintual, BancoEstado, SII, AFP, Operaci
       <div style={{ padding: '10px 0 22px', borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: '10px' }}>
           <input
-            placeholder={perfil.apiKey ? "Escribe tu consulta financiera..." : "Agrega tu API Key en Configuración para activar"}
+            placeholder="Escribe tu consulta financiera..."
             value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !cargando && enviar()}
-            disabled={!perfil.apiKey}
           />
-          <button onClick={enviar} disabled={cargando || !input.trim() || !perfil.apiKey} style={{ padding: '10px 20px', background: C.accent, border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, fontSize: '14px', flexShrink: 0, opacity: cargando || !input.trim() || !perfil.apiKey ? 0.4 : 1 }}>Enviar</button>
+          <button onClick={enviar} disabled={cargando || !input.trim()} style={{ padding: '10px 20px', background: C.accent, border: 'none', borderRadius: '8px', color: '#FFFFFF', fontWeight: 600, fontSize: '14px', flexShrink: 0, opacity: cargando || !input.trim() ? 0.4 : 1 }}>Enviar</button>
         </div>
       </div>
     </div>
@@ -1779,13 +1765,6 @@ function Configuracion({ perfil, setPerfil }) {
           <div><Etiqueta>Deuda total</Etiqueta><input type="number" value={borrador.deuda || ''} onChange={e => up('deuda', e.target.value)} /></div>
         </div>
       </Sec>
-      <Sec titulo="API Asesor IA (Anthropic)">
-        <Etiqueta>API Key — requerida para el Asesor IA</Etiqueta>
-        <input type="password" placeholder="sk-ant-api03-..." value={borrador.apiKey || ''} onChange={e => up('apiKey', e.target.value)} />
-        <div style={{ fontSize: '11px', color: C.dim, marginTop: '6px', lineHeight: '1.6' }}>
-          Tu clave se guarda en Firebase bajo tu cuenta. Obtenla en <span style={{ color: C.info }}>console.anthropic.com</span>.
-        </div>
-      </Sec>
     </div>
   );
 }
@@ -1799,7 +1778,7 @@ function App() {
     nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP',
     ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '',
     gastos: { arriendo: '', alimentacion: '', transporte: '', electricidad: '', agua: '', gas: '', internet: '', telefono: '', seguro: '', otros: '' },
-    metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5, apiKey: '',
+    metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5,
   });
   const [txns, setTxns] = useState([]);
   const [metas, setMetas] = useState([]);
@@ -1860,7 +1839,7 @@ function App() {
     await window.cerrarSesion();
     setFase('auth');
     setTxns([]); setMetas([]); setProyectos([]); setChatMsgs([]);
-    setPerfil({ nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP', ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '', gastos: {}, metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5, apiKey: '' });
+    setPerfil({ nombre: '', edad: '', pais: 'Chile', empleo: 'formal', ingreso: '', moneda: 'CLP', ingresoAdicional: '', frecuencia: 'mensual', estadoCivil: 'soltero', hijos: '', gastos: {}, metas: [], ahorro: '', deuda: '', toleranciaRiesgo: 5 });
   };
 
   const puntaje = calcPuntaje(perfil, txns);
