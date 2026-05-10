@@ -6,7 +6,7 @@
      - API / Firebase   → Network-only   (nunca cachear)
 ═══════════════════════════════════════════════════ */
 
-const CACHE_NAME = 'faro-cache-v2';
+const CACHE_NAME = 'faro-cache-v3';
 
 // Solo assets pesados que raramente cambian
 const STATIC_ASSETS = [
