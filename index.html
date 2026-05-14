@@ -772,20 +772,32 @@ function Panel({ perfil, txns, puntaje, setActivo }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginBottom: '20px' }}>
-        {[
+      {(() => {
+        const _act = perfil.activos || {};
+        const _pas = perfil.pasivos || {};
+        const _sum = (arr, k) => (arr||[]).reduce((s,i) => s+(+(i[k]||0)), 0);
+        const _totalA = _sum(_act.cuentasCorrientes,'saldo') + _sum(_act.depositosPlazo,'monto') + _sum(_act.fondosInversion,'monto') + _sum(_act.inmuebles,'valorEstimado') + _sum(_act.vehiculos,'valorEstimado') + _sum(_act.otros,'monto');
+        const _totalP = _sum(_pas.tarjetas,'deudaActual') + _sum(_pas.creditosConsumo,'saldoDeuda') + _sum(_pas.deudasEducativas,'saldoDeuda') + _sum(_pas.deudasInformales,'monto') + (+((_pas.creditoHipotecario?.saldoDeuda)||0));
+        const _nw = _totalA - _totalP;
+        const tarjetas = [
           { l: 'Ingreso Mensual', v: fmt(mIngreso, cur), s: meses[mo], c: C.text },
           { l: 'Gastos Mensuales', v: fmt(mGasto, cur), s: mGasto > mIngreso ? '⚠️ Déficit' : '✓ Dentro del presupuesto', c: mGasto > mIngreso ? C.danger : C.text },
           { l: 'Flujo Neto', v: fmt(Math.abs(neto), cur), s: `${neto >= 0 ? '+' : '−'}${tasaAhorro}% tasa de ahorro`, c: neto >= 0 ? C.success : C.danger },
           { l: 'Salud Financiera', v: `${puntaje}/100`, s: nl, c: nc },
-        ].map(({ l, v, s, c }) => (
-          <Tarjeta key={l}>
-            <div style={{ fontSize: '11px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>{l}</div>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: c, marginBottom: '4px', fontFamily: 'Fraunces' }}>{v}</div>
-            <div style={{ fontSize: '12px', color: C.muted }}>{s}</div>
-          </Tarjeta>
-        ))}
-      </div>
+          ...(perfil.patrimonio_completado ? [{ l: 'Net Worth', v: fmt(Math.abs(_nw), cur), s: _nw >= 0 ? '✅ Balance positivo' : '⚠️ Pasivos > Activos', c: _nw >= 0 ? C.accent : C.danger }] : []),
+        ];
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tarjetas.length},1fr)`, gap: '12px', marginBottom: '20px' }}>
+            {tarjetas.map(({ l, v, s, c }) => (
+              <Tarjeta key={l}>
+                <div style={{ fontSize: '11px', color: C.muted, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>{l}</div>
+                <div style={{ fontSize: '22px', fontWeight: 700, color: c, marginBottom: '4px', fontFamily: 'Fraunces' }}>{v}</div>
+                <div style={{ fontSize: '12px', color: C.muted }}>{s}</div>
+              </Tarjeta>
+            ))}
+          </div>
+        );
+      })()}
 
       {(() => {
         const act = perfil.activos || {};
@@ -1098,19 +1110,17 @@ function AsesorIA({ perfil, txns, puntaje, msgs, setMsgs }) {
   const [cargando, setCargando] = useState(false);
   const finRef = useRef(null);
   const cur = perfil.moneda || 'USD';
+  const autoFiredRef = useRef(false);
 
   useEffect(() => finRef.current?.scrollIntoView({ behavior: 'smooth' }), [msgs]);
 
-  const enviar = async () => {
-    if (!input.trim() || cargando) return;
-    const msg = input.trim(); setInput('');
-    setMsgs(p => [...p, { rol: 'usuario', contenido: msg }]);
+  // Función base que llama a la API y agrega la respuesta al chat
+  const llamarAPI = async (msg, historialBase) => {
     setCargando(true);
-
     try {
       if (!window.currentUser) throw new Error('Sin sesión activa');
       const idToken = await window.currentUser.getIdToken();
-      const historial = msgs.slice(-8).map(m => ({
+      const historial = historialBase.slice(-8).map(m => ({
         role: m.rol === 'usuario' ? 'user' : 'assistant',
         content: m.contenido
       }));
@@ -1128,11 +1138,30 @@ function AsesorIA({ perfil, txns, puntaje, msgs, setMsgs }) {
         setMsgs(p => [...p, { rol: 'asistente', contenido: data.respuesta }]);
       }
     } catch (err) {
-      console.error('Error en enviar():', err);
+      console.error('Error en llamarAPI():', err);
       setMsgs(p => [...p, { rol: 'asistente', contenido: 'Error de conexión. Intenta nuevamente.' }]);
     } finally {
       setCargando(false);
     }
+  };
+
+  // Auto-dispara la API si el componente monta con un mensaje de usuario pendiente
+  // (sucede cuando se completa WizardPatrimonio y se navega directo al Asesor)
+  useEffect(() => {
+    if (autoFiredRef.current) return;
+    if (msgs.length > 0 && msgs[msgs.length - 1].rol === 'usuario') {
+      autoFiredRef.current = true;
+      const pendiente = msgs[msgs.length - 1].contenido;
+      const historialPrevio = msgs.slice(0, -1);
+      llamarAPI(pendiente, historialPrevio);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enviar = async () => {
+    if (!input.trim() || cargando) return;
+    const msg = input.trim(); setInput('');
+    setMsgs(p => [...p, { rol: 'usuario', contenido: msg }]);
+    await llamarAPI(msg, msgs);
   };
 
   const sugerencias = ['¿Cuáles son mis fugas financieras?', '¿Debo pagar deuda o invertir primero?', 'Dame un plan de acción de 90 días', '¿Cuánto necesito en el fondo de emergencia?', '¿Cómo mejorar mi puntaje financiero?'];
@@ -1983,7 +2012,7 @@ function WizardPatrimonio({ perfil, setPerfil, onCompletado }) {
         await window.guardarPerfil?.(uid, perfilActualizado);
       } catch (e) { console.warn(e); }
     }
-    onCompletado();
+    onCompletado(perfilActualizado);
   };
 
   return (
@@ -2214,7 +2243,20 @@ function App() {
 
   const pantallas = {
     panel: <Panel perfil={perfil} txns={txns} puntaje={puntaje} setActivo={setActivo} />,
-    wizard_patrimonio: <WizardPatrimonio perfil={perfil} setPerfil={setPerfil} onCompletado={() => setActivo('panel')} />,
+    wizard_patrimonio: <WizardPatrimonio perfil={perfil} setPerfil={setPerfil} onCompletado={(perfilFinal) => {
+      if (!perfilFinal) { setActivo('panel'); return; }
+      const _s = (arr, k) => (arr||[]).reduce((s,i) => s+(+(i[k]||0)), 0);
+      const _a = perfilFinal.activos || {};
+      const _p = perfilFinal.pasivos || {};
+      const tA = _s(_a.cuentasCorrientes,'saldo') + _s(_a.depositosPlazo,'monto') + _s(_a.fondosInversion,'monto') + _s(_a.inmuebles,'valorEstimado') + _s(_a.vehiculos,'valorEstimado') + _s(_a.otros,'monto');
+      const tP = _s(_p.tarjetas,'deudaActual') + _s(_p.creditosConsumo,'saldoDeuda') + _s(_p.deudasEducativas,'saldoDeuda') + _s(_p.deudasInformales,'monto') + (+(_p.creditoHipotecario?.saldoDeuda||0));
+      const nwStr = fmt(Math.abs(tA - tP), perfilFinal.moneda || 'CLP');
+      const signo = tA - tP >= 0 ? 'positivo' : 'negativo';
+      const objStr = (perfilFinal.objetivos || []).join(', ') || 'no especificados';
+      const autoMsg = `Acabo de registrar mi patrimonio. Tengo activos por ${fmt(tA, perfilFinal.moneda||'CLP')} y pasivos por ${fmt(tP, perfilFinal.moneda||'CLP')}, net worth ${signo} de ${nwStr}. Mis objetivos son: ${objStr}. En base a esto, proponé 3 metas financieras concretas y alcanzables para los próximos 12 meses, con montos y plazos específicos.`;
+      setChatMsgs(prev => [...prev, { rol: 'usuario', contenido: autoMsg }]);
+      setActivo('asesor');
+    }} />,
     transacciones: <Transacciones txns={txns} setTxns={setTxns} perfil={perfil} />,
     asesor: <AsesorIA perfil={perfil} txns={txns} puntaje={puntaje} msgs={chatMsgs} setMsgs={setChatMsgs} />,
     metas: <Metas metas={metas} setMetas={setMetas} perfil={perfil} />,
